@@ -9,8 +9,9 @@ stages (events / metrics / report) are pure and run anywhere.
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -32,6 +33,10 @@ class AnalysisResult:
     metrics: MetricsReport
     count_estimate: int
     warnings: list[str]
+    # Per-frame overlay data, populated only when the annotated-video output
+    # is requested (see ``analyze_video(collect_overlay=True)``).
+    frame_detections: list[Any] = field(default_factory=list)
+    frame_keypoints: list[Any] = field(default_factory=list)
 
 
 def estimate_prop_count(trajectories: list[Trajectory], meta: VideoMeta) -> int:
@@ -80,8 +85,13 @@ def analyze_trajectories(
 def analyze_video(
     path: str,
     cfg: Config | None = None,
+    collect_overlay: bool = False,
 ) -> AnalysisResult:
-    """Run the full video pipeline (stages 1–5). Requires the ``cv`` extra."""
+    """Run the full video pipeline (stages 1–5). Requires the ``cv`` extra.
+
+    When ``collect_overlay`` is set, per-frame tracked detections and pose
+    keypoints are retained so an annotated video can be rendered (stage 6a).
+    """
     cfg = cfg or Config()
 
     meta = ingest_stage.probe(path)
@@ -89,18 +99,23 @@ def analyze_video(
 
     prop_detector = YOLOPropDetector(cfg.detection)
     pose_estimator = YOLOPoseEstimator(cfg.detection)
-    accumulator = TrackAccumulator(cfg.tracking, meta.fps)
+    accumulator = TrackAccumulator(cfg.tracking, meta.fps, keep_frames=collect_overlay)
 
     # Stage 2–3: stream frames through detection + tracking.
-    # Pose/wrist trajectories are accumulated alongside (draft: kept minimal).
+    keypoints: list[object] = []
     for frame in ingest_stage.frames(path):
         detections = prop_detector(frame)
         accumulator.update(detections)
-        pose_estimator(frame)  # wrist extraction wired; aggregation is TODO
+        kp = pose_estimator(frame)  # wrist keypoints; aggregation into hands is TODO
+        if collect_overlay:
+            keypoints.append(kp)
 
     trajectories = accumulator.trajectories()
     result = analyze_trajectories(meta, trajectories, None, cfg)
     result.warnings = warnings
+    if collect_overlay:
+        result.frame_detections = accumulator.frame_detections()
+        result.frame_keypoints = keypoints
     return result
 
 
@@ -111,7 +126,8 @@ def run(
     annotate: bool = False,
 ) -> AnalysisResult:
     """Full analyze + write report (+ optional annotated video)."""
-    result = analyze_video(path, cfg)
+    cfg = cfg or Config()
+    result = analyze_video(path, cfg, collect_overlay=annotate)
     report_stage.write_report(
         result.meta,
         result.timelines,
@@ -123,7 +139,5 @@ def run(
     if annotate:
         from . import annotate as annotate_stage
 
-        annotate_stage.annotate_video(
-            result.meta, result.metrics, out_dir / "annotated.mp4"
-        )
+        annotate_stage.annotate_video(result, out_dir / "annotated.mp4", cfg)
     return result

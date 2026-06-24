@@ -43,19 +43,37 @@ class YOLOPropDetector:
 
     def __init__(self, cfg: DetectionConfig) -> None:
         ultralytics = require("ultralytics")
-        if not cfg.model_path:
+        self._conf = cfg.confidence
+        self._ball_class_id: int | None = None
+        if cfg.model_path:
+            self._model = ultralytics.YOLO(cfg.model_path)
+        elif cfg.allow_coco:
+            # Smoke-test fallback: COCO weights filtered to "sports ball" (§4.2).
+            import warnings
+
+            warnings.warn(
+                "Running with COCO 'sports ball' weights (--allow-coco): "
+                "detections are unreliable for fast juggling props; use only "
+                "to validate pipeline plumbing, not real metrics (§4.2).",
+                stacklevel=2,
+            )
+            self._model = ultralytics.YOLO(cfg.coco_model_path)
+            self._ball_class_id = cfg.coco_ball_class_id
+        else:
             msg = (
                 "DetectionConfig.model_path must point to fine-tuned prop "
-                "weights (COCO 'sports ball' is unreliable for fast props; §4.2)"
+                "weights (COCO 'sports ball' is unreliable for fast props; "
+                "§4.2). Pass --allow-coco for a plumbing-only smoke test."
             )
             raise ValueError(msg)
-        self._model = ultralytics.YOLO(cfg.model_path)
-        self._conf = cfg.confidence
 
     def __call__(self, frame: NDArray[np.uint8]) -> Any:
         sv = require("supervision")
         result = self._model(frame, conf=self._conf, verbose=False)[0]
-        return sv.Detections.from_ultralytics(result)
+        detections = sv.Detections.from_ultralytics(result)
+        if self._ball_class_id is not None:
+            detections = detections[detections.class_id == self._ball_class_id]
+        return detections
 
 
 class YOLOPoseEstimator:

@@ -8,3 +8,10 @@ build/
 *.egg-info/
 uv.lock.bak
 
+# Downloaded model weights (fetched on demand by ultralytics)
+*.pt
+
+# Local analysis artifacts: input clips, generated reports, annotated video
+*.mp4
+report/
+

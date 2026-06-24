@@ -22,7 +22,9 @@ class TrackAccumulator:
     """Streams per-frame detections through ByteTrack + smoothing and
     accumulates one ``Trajectory`` per ``tracker_id`` (§4.3)."""
 
-    def __init__(self, cfg: TrackingConfig, fps: float) -> None:
+    def __init__(
+        self, cfg: TrackingConfig, fps: float, keep_frames: bool = False
+    ) -> None:
         sv = require("supervision")
         self._fps = fps
         self._tracker = sv.ByteTrack(
@@ -34,11 +36,17 @@ class TrackAccumulator:
         self._smoother = sv.DetectionsSmoother(length=cfg.smoother_length)
         self._buf: dict[int, list[tuple[float, float, float, float]]] = {}
         self._frame_idx = 0
+        # Per-frame tracked detections, retained only when the annotated-video
+        # output is requested (the annotator needs them to redraw §4.6).
+        self._keep_frames = keep_frames
+        self._frames: list[Any] = []
 
     def update(self, detections: Any) -> None:
         """Advance one frame of detections."""
         tracked = self._tracker.update_with_detections(detections)
         tracked = self._smoother.update_with_detections(tracked)
+        if self._keep_frames:
+            self._frames.append(tracked)
         t = self._frame_idx / self._fps if self._fps else float(self._frame_idx)
         xyxy = tracked.xyxy
         ids = tracked.tracker_id
@@ -51,6 +59,10 @@ class TrackAccumulator:
                 cy = float((box[1] + box[3]) / 2)
                 self._buf.setdefault(int(tid), []).append((t, cx, cy, float(c)))
         self._frame_idx += 1
+
+    def frame_detections(self) -> list[Any]:
+        """Per-frame tracked detections (empty unless ``keep_frames=True``)."""
+        return self._frames
 
     def trajectories(self) -> list[Trajectory]:
         out: list[Trajectory] = []

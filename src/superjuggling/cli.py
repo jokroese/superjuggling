@@ -36,11 +36,18 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Also render an annotated output video.",
     )
+    analyze.add_argument(
+        "--allow-coco",
+        action="store_true",
+        help="Smoke test only: use COCO 'sports ball' weights when no "
+        "fine-tuned prop model is set. Detections are unreliable (§4.2).",
+    )
     return parser
 
 
 def cmd_analyze(args: argparse.Namespace) -> int:
     cfg = Config()
+    cfg.detection.allow_coco = args.allow_coco
     try:
         result = run(args.video, args.out, cfg, annotate=args.annotate)
     except MissingCVDependency as exc:
@@ -59,6 +66,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     )
     print(f"Overall consistency: {result.metrics.overall_consistency:.0f}/100")
     print(f"Report written to {args.out}/")
+    if args.annotate:
+        print(f"Annotated video written to {args.out / 'annotated.mp4'}")
     return 0
 
 

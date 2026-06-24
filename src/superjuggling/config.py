@@ -28,6 +28,12 @@ class DetectionConfig:
     # Props are small and motion-blurred at the apex, so the threshold is low
     # and we lean on tracking + smoothing to suppress spurious detections.
     confidence: float = 0.2
+    # Smoke-test escape hatch (tech spec §4.2): when no fine-tuned weights exist,
+    # fall back to COCO ``yolov8n.pt`` filtered to the "sports ball" class. The
+    # spec warns these detections are unreliable for fast props — plumbing only.
+    allow_coco: bool = False
+    coco_model_path: str = "yolov8n.pt"
+    coco_ball_class_id: int = 32  # COCO "sports ball"
 
 
 @dataclass
