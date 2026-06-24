@@ -5,13 +5,34 @@ build-backend = "uv_build"
 [project]
 name = "superjuggling"
 version = "0.1.0"
-description = ""
+description = "Juggling consistency tracker — turns a juggling clip into consistency metrics."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+# Heavy computer-vision stack (detection/tracking/annotation + plotting).
+# Not required to run the metrics engine or the test suite; install with
+# `uv sync --extra cv` to enable the full video pipeline.
+cv = [
+    "supervision>=0.21",
+    "ultralytics>=8.2",
+    "opencv-python>=4.9",
+    "pandas>=2.2",
+    "matplotlib>=3.8",
+]
 
 [project.scripts]
 superjuggling = "superjuggling.__main__:main"
 
 [dependency-groups]
 dev = ["pre-commit", "pytest", "pyright[nodejs]", "ruff"]
+
+[tool.pyright]
+# The `cv` extra (supervision/ultralytics/opencv/...) is optional and not
+# installed in the default dev/CI environment; those imports are lazy and
+# guarded at runtime.
+reportMissingModuleSource = "none"
