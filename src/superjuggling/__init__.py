@@ -6,6 +6,7 @@ dependencies; the video pipeline stages require the optional ``cv`` extra
 """
 
 from .config import Config
+from .evaluation import CandidateEvaluationSummary
 from .labels import GroundTruthLabel
 from .models import (
     BallCandidate,
@@ -19,6 +20,7 @@ __all__ = [
     "BallCandidate",
     "CandidateFrame",
     "Config",
+    "CandidateEvaluationSummary",
     "GroundTruthLabel",
     "TrackingSummary",
     "Trajectory",

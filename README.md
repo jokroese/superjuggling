@@ -183,6 +183,47 @@ Evaluation should only score frames present in the label CSV. Predictions after
 frame 71 are ignored for this benchmark; they are neither rewarded nor
 penalized.
 
+### Candidate evaluation
+
+Run the tracker with debug artefacts enabled:
+
+```bash
+uv run superjuggling analyze juggling-short \
+  --candidate-source hybrid \
+  --tracking ballistic \
+  --debug-overlays
+```
+
+This writes:
+
+```text
+runs/<run-id>/debug_candidates.csv
+```
+
+Evaluate candidate centres against the trusted label slice:
+
+```bash
+uv run superjuggling evaluate-candidates \
+  runs/<run-id>/debug_candidates.csv \
+  --labels data/labels/juggling-short-0000-0071.csv \
+  --radius-px 15 \
+  --out runs/<run-id>/candidate_evaluation.json
+```
+
+The evaluator reports:
+
+```text
+recall
+precision
+F1
+mean/median matched error
+held recall
+free-flight recall
+```
+
+Only frames present in the label CSV are scored. For the first benchmark, that
+means frames `0..71`; predictions from later frames are ignored.
+
 ---
 
 ## Quickstart

@@ -12,6 +12,10 @@ from pathlib import Path
 
 from ._optional import MissingCVDependency
 from .config import Config
+from .evaluation import (
+    evaluate_candidate_csv,
+    write_candidate_evaluation_json,
+)
 from .labels import (
     convert_cvat_video_to_csv,
     filter_labels_by_frame_range,
@@ -184,6 +188,34 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Last trusted frame to include, inclusive. For your first slice use 71.",
     )
+
+    evaluate = sub.add_parser(
+        "evaluate-candidates",
+        help="Evaluate debug candidate detections against ground-truth labels.",
+    )
+    evaluate.add_argument(
+        "candidates_csv",
+        type=Path,
+        help="Path to debug_candidates.csv from an analyze --debug-overlays run.",
+    )
+    evaluate.add_argument(
+        "--labels",
+        type=Path,
+        required=True,
+        help="Project-native ground-truth labels CSV.",
+    )
+    evaluate.add_argument(
+        "--radius-px",
+        type=float,
+        default=15.0,
+        help="Maximum centre distance for a match in pixels (default: 15).",
+    )
+    evaluate.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Optional path for machine-readable candidate_evaluation.json.",
+    )
     return parser
 
 
@@ -226,6 +258,55 @@ def cmd_convert_cvat(args: argparse.Namespace) -> int:
     if unknown_held:
         print(f"Unknown held labels: {unknown_held}")
     print(f"Wrote {args.out}")
+    return 0
+
+
+def _fmt_rate(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:.3f}"
+
+
+def cmd_evaluate_candidates(args: argparse.Namespace) -> int:
+    try:
+        evaluation = evaluate_candidate_csv(
+            candidates_path=args.candidates_csv,
+            labels_path=args.labels,
+            radius_px=args.radius_px,
+        )
+        if args.out is not None:
+            write_candidate_evaluation_json(evaluation, args.out)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    summary = evaluation.summary
+    print(f"Candidate evaluation @ {summary.radius_px:g}px")
+    print(f"Labelled frames: {summary.labelled_frames}")
+    print(f"Visible labels: {summary.visible_labels}")
+    print(f"Predicted candidates on labelled frames: {summary.predicted_candidates}")
+    print(f"Matches: {summary.matches}")
+    print(f"False negatives: {summary.false_negatives}")
+    print(f"False positives: {summary.false_positives}")
+    print(f"Recall: {_fmt_rate(summary.recall)}")
+    print(f"Precision: {_fmt_rate(summary.precision)}")
+    print(f"F1: {_fmt_rate(summary.f1)}")
+    print(
+        "Mean matched error: "
+        f"{'n/a' if summary.mean_error_px is None else f'{summary.mean_error_px:.3f}px'}"
+    )
+    print(
+        "Median matched error: "
+        f"{'n/a' if summary.median_error_px is None else f'{summary.median_error_px:.3f}px'}"
+    )
+    print(f"Held recall: {_fmt_rate(summary.held_recall)}")
+    print(f"Free-flight recall: {_fmt_rate(summary.free_recall)}")
+    if evaluation.source_counts:
+        print("Candidate sources:")
+        for source, count in sorted(evaluation.source_counts.items()):
+            print(f"  {source}: {count}")
+    if args.out is not None:
+        print(f"Wrote {args.out}")
     return 0
 
 
@@ -321,5 +402,7 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_analyze(args)
     if args.command == "convert-cvat":
         return cmd_convert_cvat(args)
+    if args.command == "evaluate-candidates":
+        return cmd_evaluate_candidates(args)
     parser.print_help()
     return 1
