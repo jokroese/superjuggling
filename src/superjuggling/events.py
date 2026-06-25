@@ -3,6 +3,9 @@
 Turns smoothed prop trajectories into discrete, timestamped throw / catch /
 drop events. Pure NumPy + SciPy: no CV dependency, so it is unit-testable
 against synthetic trajectories.
+
+Detected apex candidates are refined with a short-window quadratic fit, which
+stabilises apex timing/height while avoiding brittle whole-flight assumptions.
 """
 
 from __future__ import annotations
@@ -40,6 +43,125 @@ def _parabolic_vertex(
     c = y1 - a * x1 * x1 - b * x1
     vy = a * vx * vx + b * vx + c
     return vx, vy
+
+
+def _confidence_weights(
+    traj: Trajectory,
+    mask: NDArray[np.bool_],
+) -> NDArray[np.float64]:
+    """Return normalised positive weights from detection confidence.
+
+    Missing confidence falls back to equal weights. The square root is applied
+    later when forming the weighted least-squares design matrix.
+    """
+    n = int(np.sum(mask))
+    if traj.confidence is None:
+        return np.ones(n, dtype=np.float64)
+
+    weights = np.asarray(traj.confidence[mask], dtype=np.float64)
+    valid = np.isfinite(weights) & (weights > 0)
+    if not np.any(valid):
+        return np.ones(n, dtype=np.float64)
+
+    weights = np.where(valid, weights, 0.0)
+    max_weight = float(np.max(weights))
+    if max_weight <= 0:
+        return np.ones(n, dtype=np.float64)
+    return weights / max_weight
+
+
+def _weighted_lstsq(
+    design: NDArray[np.float64],
+    values: NDArray[np.float64],
+    weights: NDArray[np.float64],
+) -> NDArray[np.float64] | None:
+    """Solve a small weighted least-squares problem.
+
+    ``np.linalg.lstsq`` is enough here because the models are linear in their
+    coefficients: y = a*u² + b*u + c and x = m*u + k.
+    """
+    try:
+        sqrt_w = np.sqrt(weights)
+        lhs = design * sqrt_w[:, None]
+        rhs = values * sqrt_w
+        coeffs, *_ = np.linalg.lstsq(lhs, rhs, rcond=None)
+    except np.linalg.LinAlgError:
+        return None
+    return np.asarray(coeffs, dtype=np.float64)
+
+
+def _fit_apex_window(
+    traj: Trajectory,
+    peak_index: int,
+    cfg: EventConfig,
+) -> tuple[float, float, float] | None:
+    """Refine one apex candidate with a short local quadratic fit.
+
+    The peak detector proposes a local y-minimum. Around that candidate, fit:
+
+    - y(u) = a*u² + b*u + c for the vertical ballistic shape
+    - x(u) = m*u + k for lateral interpolation at the refined apex time
+
+    where u = t - t_peak. Centring keeps the tiny polynomial system well
+    conditioned. The fit is accepted only when it has positive curvature, the
+    vertex remains inside the local window, and the vertical RMS residual is
+    small enough.
+    """
+    if cfg.apex_fit_half_window_s <= 0:
+        return None
+
+    t_peak = float(traj.t[peak_index])
+    mask = np.abs(traj.t - t_peak) <= cfg.apex_fit_half_window_s
+    if int(np.sum(mask)) < cfg.apex_fit_min_points:
+        return None
+
+    t_win = np.asarray(traj.t[mask], dtype=np.float64)
+    x_win = np.asarray(traj.x[mask], dtype=np.float64)
+    y_win = np.asarray(traj.y[mask], dtype=np.float64)
+    weights = _confidence_weights(traj, mask)
+
+    finite = np.isfinite(t_win) & np.isfinite(x_win) & np.isfinite(y_win)
+    if int(np.sum(finite)) < cfg.apex_fit_min_points:
+        return None
+
+    t_win = t_win[finite]
+    x_win = x_win[finite]
+    y_win = y_win[finite]
+    weights = weights[finite]
+
+    u = t_win - t_peak
+    y_design = np.column_stack((u * u, u, np.ones_like(u)))
+    y_coeffs = _weighted_lstsq(y_design, y_win, weights)
+    if y_coeffs is None:
+        return None
+
+    a, b, c = [float(v) for v in y_coeffs]
+    # Image y grows downward, so a visible throw apex is a local minimum and
+    # therefore needs positive curvature in y(t).
+    if a <= 0:
+        return None
+
+    vertex_u = -b / (2.0 * a)
+    if abs(vertex_u) > cfg.apex_fit_half_window_s:
+        return None
+    if not (float(np.min(u)) <= vertex_u <= float(np.max(u))):
+        return None
+
+    y_pred = y_design @ y_coeffs
+    rms = float(np.sqrt(np.mean((y_pred - y_win) ** 2)))
+    if rms > cfg.apex_fit_max_rms_px:
+        return None
+
+    x_design = np.column_stack((u, np.ones_like(u)))
+    x_coeffs = _weighted_lstsq(x_design, x_win, weights)
+    if x_coeffs is None:
+        return None
+
+    m, k = [float(v) for v in x_coeffs]
+    t_apex = t_peak + vertex_u
+    y_apex = a * vertex_u * vertex_u + b * vertex_u + c
+    x_apex = m * vertex_u + k
+    return t_apex, y_apex, x_apex
 
 
 def _hand_line(hands: dict[Hand, HandTrack] | None, default_y: float) -> float:
@@ -87,15 +209,21 @@ def extract_throws(
     for p in peaks:
         t_apex, y_apex = float(traj.t[p]), float(traj.y[p])
         x_apex = float(traj.x[p])
-        if cfg.parabolic_refine and 0 < p < len(traj.t) - 1:
-            t_apex, y_apex = _parabolic_vertex(
-                float(traj.t[p - 1]),
-                float(traj.t[p]),
-                float(traj.t[p + 1]),
-                float(traj.y[p - 1]),
-                float(traj.y[p]),
-                float(traj.y[p + 1]),
-            )
+        if cfg.parabolic_refine:
+            fitted = _fit_apex_window(traj, int(p), cfg)
+            if fitted is not None:
+                t_apex, y_apex, x_apex = fitted
+            elif 0 < p < len(traj.t) - 1:
+                # Conservative fallback for sparse windows: preserve the old
+                # 3-point sub-frame refinement behaviour.
+                t_apex, y_apex = _parabolic_vertex(
+                    float(traj.t[p - 1]),
+                    float(traj.t[p]),
+                    float(traj.t[p + 1]),
+                    float(traj.y[p - 1]),
+                    float(traj.y[p]),
+                    float(traj.y[p + 1]),
+                )
         throws.append(
             ThrowEvent(
                 t=t_apex,

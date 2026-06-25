@@ -93,8 +93,7 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--debug-overlays",
         action="store_true",
-        help="Render diagnostic overlays in the annotated video. Implies "
-        "--annotate.",
+        help="Render diagnostic overlays in the annotated video. Implies --annotate.",
     )
     analyze.add_argument(
         "--allow-coco",

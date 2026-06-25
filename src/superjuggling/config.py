@@ -55,8 +55,19 @@ class EventConfig:
     apex_min_prominence: float = 15.0
     # Refractory period between consecutive throws on one trajectory (seconds).
     min_inter_throw_s: float = 0.15
-    # Fit a parabola to the 3 samples around an apex for sub-frame timing.
+    # Refine apex timing/height with a local quadratic fit. This is intentionally
+    # short-window rather than whole-flight physics fitting: the tracker can
+    # fragment or swap IDs, but the samples near a detected apex are usually the
+    # most reliable part of the flight.
     parabolic_refine: bool = True
+    # Half-window around a detected apex candidate used for the local quadratic
+    # fit. At 60 fps, 0.10s gives up to ~13 samples; at 30 fps, ~7 samples.
+    apex_fit_half_window_s: float = 0.10
+    # Minimum samples required before using the windowed fit. Otherwise the
+    # extractor falls back to the previous 3-point vertex refinement.
+    apex_fit_min_points: int = 5
+    # Reject noisy local fits rather than trusting a bad parabola.
+    apex_fit_max_rms_px: float = 25.0
     # A drop is confirmed when a lost track's last centre sits in the bottom
     # fraction of the frame.
     floor_zone_fraction: float = 0.85
