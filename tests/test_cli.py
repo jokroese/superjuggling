@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 from typing import Any
 
-from superjuggling.cli import _resolve_video_path, main
+from superjuggling.cli import _build_parser, _resolve_video_path, cmd_analyze, main
 from superjuggling.labels import GroundTruthLabel, write_ground_truth_csv
 
 from test_labels import CVAT_XML
@@ -115,3 +116,45 @@ def test_evaluate_candidates_cli_writes_report(
     assert "Visible labels: 1" in captured.out
     assert "Predicted candidates on labelled frames: 1" in captured.out
     assert "Recall: 1.000" in captured.out
+
+
+def test_analyze_parser_accepts_yolo_confidence() -> None:
+    parser = _build_parser()
+
+    args = parser.parse_args(
+        [
+            "analyze",
+            "clip",
+            "--candidate-source",
+            "yolo",
+            "--yolo-confidence",
+            "0.1",
+        ]
+    )
+
+    assert args.yolo_confidence == 0.1
+
+
+def test_cmd_analyze_rejects_invalid_yolo_confidence(capsys: Any) -> None:
+    args = argparse.Namespace(
+        video="clip",
+        out=None,
+        runs_dir=Path("runs"),
+        overwrite=False,
+        annotate=False,
+        no_annotate=True,
+        debug_overlays=False,
+        require_model=False,
+        tracking="ballistic",
+        candidate_source="yolo",
+        yolo_confidence=1.5,
+        candidate_min_score=None,
+        heatmap_window_radius=None,
+        heatmap_min_score=None,
+    )
+
+    status = cmd_analyze(args)
+
+    captured = capsys.readouterr()
+    assert status == 1
+    assert "--yolo-confidence must be between 0 and 1" in captured.err

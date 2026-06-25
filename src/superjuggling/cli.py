@@ -133,6 +133,12 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     analyze.add_argument(
+        "--yolo-confidence",
+        type=float,
+        default=None,
+        help="YOLO detector confidence threshold. Lower values increase recall.",
+    )
+    analyze.add_argument(
         "--candidate-min-score",
         type=float,
         default=None,
@@ -318,6 +324,11 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     cfg.detection.allow_coco = not args.require_model
     cfg.linking.backend = args.tracking
     cfg.detection.candidate_source = args.candidate_source
+    if args.yolo_confidence is not None:
+        if not 0.0 <= args.yolo_confidence <= 1.0:
+            print("error: --yolo-confidence must be between 0 and 1", file=sys.stderr)
+            return 1
+        cfg.detection.confidence = args.yolo_confidence
     if args.candidate_min_score is not None:
         cfg.candidates.min_score = args.candidate_min_score
     if args.heatmap_window_radius is not None:
@@ -388,6 +399,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         print(
             "note: used COCO sports-ball fallback; fine-tuned prop weights are recommended"
         )
+    print(f"YOLO confidence: {cfg.detection.confidence}")
     print(f"Tracking backend: {cfg.linking.backend}")
     print(f"Candidate source: {cfg.detection.candidate_source}")
     if args.debug_overlays:

@@ -122,6 +122,28 @@ uv run superjuggling analyze run1 --tracking ballistic
 `bytetrack` is box-native, so it requires YOLO detections. `centre` and
 `ballistic` consume centre candidates from any source.
 
+YOLO confidence can be tuned from the CLI:
+
+```bash
+uv run superjuggling analyze run1 \
+  --candidate-source yolo \
+  --tracking ballistic \
+  --yolo-confidence 0.10
+```
+
+Lower confidence usually increases recall and may reduce precision. For a new
+label slice, run a small sweep:
+
+```bash
+uv run superjuggling analyze run1 --candidate-source yolo --tracking ballistic --yolo-confidence 0.20 --debug-overlays --out runs/eval-yolo-conf-020 --overwrite
+uv run superjuggling analyze run1 --candidate-source yolo --tracking ballistic --yolo-confidence 0.15 --debug-overlays --out runs/eval-yolo-conf-015 --overwrite
+uv run superjuggling analyze run1 --candidate-source yolo --tracking ballistic --yolo-confidence 0.10 --debug-overlays --out runs/eval-yolo-conf-010 --overwrite
+uv run superjuggling analyze run1 --candidate-source yolo --tracking ballistic --yolo-confidence 0.07 --debug-overlays --out runs/eval-yolo-conf-007 --overwrite
+uv run superjuggling analyze run1 --candidate-source yolo --tracking ballistic --yolo-confidence 0.05 --debug-overlays --out runs/eval-yolo-conf-005 --overwrite
+```
+
+Compare the resulting `debug_candidates.csv` files with `evaluate-candidates`.
+
 ### Diagnostic overlays
 
 To debug detection/tracking failures, render the annotated video with raw
