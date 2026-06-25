@@ -15,6 +15,34 @@ from .config import Config
 from .pipeline import run
 
 
+_VIDEO_EXTENSIONS = (".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm")
+
+
+def _resolve_video_path(value: str, videos_dir: Path = Path("data/videos")) -> Path:
+    """Resolve ergonomic video arguments.
+
+    Accepted forms:
+
+    - exact path: ``data/videos/juggling-short.mp4``
+    - file in ``data/videos``: ``juggling-short.mp4``
+    - stem in ``data/videos``: ``juggling-short``
+    """
+    path = Path(value)
+    if path.exists():
+        return path
+
+    candidates: list[Path] = []
+    if path.suffix:
+        candidates.append(videos_dir / path.name)
+    else:
+        candidates.extend(videos_dir / f"{path.name}{ext}" for ext in _VIDEO_EXTENSIONS)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return path
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="superjuggling",
@@ -25,7 +53,13 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze = sub.add_parser(
         "analyze", help="Analyze a juggling clip and write a report."
     )
-    analyze.add_argument("video", help="Path to the input video clip.")
+    analyze.add_argument(
+        "video",
+        help=(
+            "Input video path, or a filename/stem in data/videos/ "
+            "(e.g. juggling-short)."
+        ),
+    )
     analyze.add_argument(
         "--out",
         type=Path,
@@ -49,7 +83,12 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--annotate",
         action="store_true",
-        help="Also render an annotated output video.",
+        help="Render an annotated output video. This is already the default.",
+    )
+    analyze.add_argument(
+        "--no-annotate",
+        action="store_true",
+        help="Skip rendering annotated.mp4 and only write report artefacts.",
     )
     analyze.add_argument(
         "--debug-overlays",
@@ -60,20 +99,37 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--allow-coco",
         action="store_true",
-        help="Smoke test only: use COCO 'sports ball' weights when no "
-        "fine-tuned prop model is set. Detections are unreliable (§4.2).",
+        help=(
+            "Allow COCO 'sports ball' fallback when no fine-tuned prop model "
+            "is set. This is already the default for the CLI."
+        ),
+    )
+    analyze.add_argument(
+        "--require-model",
+        action="store_true",
+        help="Disable COCO fallback and require fine-tuned prop weights.",
     )
     return parser
 
 
 def cmd_analyze(args: argparse.Namespace) -> int:
     cfg = Config()
-    cfg.detection.allow_coco = args.allow_coco
-    annotate = bool(args.annotate or args.debug_overlays)
+    # CLI default: make the first run useful without forcing users to configure
+    # a detector first. Library/default Config can remain stricter later if
+    # desired; the command-line tool optimises for a smooth local workflow.
+    cfg.detection.allow_coco = not args.require_model
+
+    video_path = _resolve_video_path(args.video)
+
+    # Annotated video is the useful default for this project: it is both an
+    # output artefact and the fastest way to understand detection/tracking
+    # failures. Users can opt out for faster report-only runs.
+    annotate = not args.no_annotate or args.annotate or args.debug_overlays
+
     command = " ".join(shlex.quote(part) for part in sys.argv)
     try:
         result = run(
-            args.video,
+            str(video_path),
             args.out,
             cfg,
             annotate=annotate,
@@ -91,15 +147,20 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         return 1
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
-        if args.debug_overlays and not args.allow_coco:
+        if args.require_model:
             print(
-                "hint: for a plumbing-only diagnostic run without fine-tuned "
-                "weights, add --allow-coco.",
+                "hint: remove --require-model to use the default COCO fallback.",
                 file=sys.stderr,
             )
         return 1
     except FileNotFoundError:
         print(f"error: video not found: {args.video}", file=sys.stderr)
+        if not Path(args.video).exists():
+            print(
+                "hint: pass a full path, or place the clip in data/videos/ "
+                "and use its filename or stem.",
+                file=sys.stderr,
+            )
         return 1
 
     for warning in result.warnings:
@@ -113,6 +174,10 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     print(f"Run written to {result.out_dir}/")
     if annotate:
         print(f"Annotated video written to {result.out_dir / 'annotated.mp4'}")
+    if cfg.detection.allow_coco and cfg.detection.model_path is None:
+        print(
+            "note: used COCO sports-ball fallback; fine-tuned prop weights are recommended"
+        )
     if args.debug_overlays:
         print("Diagnostic overlays enabled")
     return 0

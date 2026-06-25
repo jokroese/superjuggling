@@ -32,7 +32,16 @@ uv run pytest
 
 # Full video pipeline (downloads the CV stack: supervision, ultralytics, ...):
 uv sync --extra cv
-uv run superjuggling analyze data/videos/run1.mp4 --annotate
+uv run superjuggling analyze run1
+```
+
+The CLI looks for clips in `data/videos/`, so these are equivalent when the
+file exists:
+
+```bash
+uv run superjuggling analyze run1
+uv run superjuggling analyze run1.mp4
+uv run superjuggling analyze data/videos/run1.mp4
 ```
 
 By default each analysis writes to a fresh run directory:
@@ -49,7 +58,7 @@ Each run contains:
 |------|---------|
 | `metrics.json` | Machine-readable metrics report, schema in tech spec §6 |
 | `summary.md` | Human-readable summary |
-| `annotated.mp4` | Annotated video, when `--annotate` or `--debug-overlays` is enabled |
+| `annotated.mp4` | Annotated video (default; pass `--no-annotate` to skip) |
 | `config.json` | Effective configuration used for the run |
 | `run.json` | Input hash, output names, options, code and environment metadata |
 | `command.txt` | Exact command invocation |
@@ -64,9 +73,22 @@ Existing output directories are not overwritten unless you pass `--overwrite`.
 
 The prop detector needs fine-tuned weights (`--out` aside, set
 `Config.detection.model_path`); COCO's "sports ball" class is unreliable for fast
-props (§4.2). For a **plumbing-only smoke test** with no custom model, add
-`--allow-coco` to fall back to COCO weights — useful to confirm the annotated
-video renders end to end, not to read real metrics off it.
+props (§4.2). Until custom weights are configured, the CLI falls back to COCO's
+`sports ball` class so the tool is usable out of the box. Treat those numbers as
+diagnostic, not final-quality metrics.
+
+For strict runs that must use fine-tuned prop weights:
+
+```bash
+uv run superjuggling analyze run1 --require-model
+```
+
+`annotated.mp4` is rendered by default because it is the fastest way to inspect
+tracking quality. For report-only runs:
+
+```bash
+uv run superjuggling analyze run1 --no-annotate
+```
 
 ### Diagnostic overlays
 
@@ -75,7 +97,7 @@ pre-tracking detections, low-confidence highlights, recent trajectory samples,
 drop flashes, and per-frame debug counts:
 
 ```bash
-uv run superjuggling analyze data/videos/run1.mp4 --debug-overlays --allow-coco
+uv run superjuggling analyze run1 --debug-overlays
 ```
 
 ---
