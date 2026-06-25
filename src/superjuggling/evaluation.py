@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import csv
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -74,12 +74,46 @@ class CandidateEvaluationSummary:
 
 
 @dataclass(frozen=True)
+class FrameCandidateDiagnostic:
+    """Candidate evaluation diagnostics for one labelled frame."""
+
+    frame_index: int
+    visible_labels: int
+    predicted_candidates: int
+    matches: int
+    misses: int
+    false_positives: int
+    recall: float | None
+    precision: float | None
+
+
+@dataclass(frozen=True)
+class BallCandidateDiagnostic:
+    """Candidate evaluation diagnostics for one labelled ball ID."""
+
+    ball_id: int
+    visible_labels: int
+    matches: int
+    misses: int
+    recall: float | None
+    held_visible_labels: int
+    held_matches: int
+    held_recall: float | None
+    free_visible_labels: int
+    free_matches: int
+    free_recall: float | None
+
+
+@dataclass(frozen=True)
 class CandidateEvaluation:
     """Full candidate evaluation payload."""
 
     summary: CandidateEvaluationSummary
     matches: list[CandidateMatch]
+    frame_diagnostics: list[FrameCandidateDiagnostic]
+    ball_diagnostics: list[BallCandidateDiagnostic]
     source_counts: dict[str, int]
+    source_match_counts: dict[str, int]
 
 
 def _safe_float(value: str | None, *, default: float = 0.0) -> float:
@@ -178,6 +212,79 @@ def _match_frame(
     return matches
 
 
+def _frame_diagnostics(
+    *,
+    label_frames: list[int],
+    labels_by_frame: dict[int, list[GroundTruthLabel]],
+    predictions_by_frame: dict[int, list[CandidatePrediction]],
+    matches: list[CandidateMatch],
+) -> list[FrameCandidateDiagnostic]:
+    matches_by_frame = Counter(match.frame_index for match in matches)
+    diagnostics: list[FrameCandidateDiagnostic] = []
+
+    for frame_index in label_frames:
+        visible = [
+            label for label in labels_by_frame.get(frame_index, []) if label.visible
+        ]
+        predictions = predictions_by_frame.get(frame_index, [])
+        n_visible = len(visible)
+        n_predictions = len(predictions)
+        n_matches = matches_by_frame[frame_index]
+        diagnostics.append(
+            FrameCandidateDiagnostic(
+                frame_index=frame_index,
+                visible_labels=n_visible,
+                predicted_candidates=n_predictions,
+                matches=n_matches,
+                misses=n_visible - n_matches,
+                false_positives=n_predictions - n_matches,
+                recall=_rate(n_matches, n_visible),
+                precision=_rate(n_matches, n_predictions),
+            )
+        )
+    return diagnostics
+
+
+def _ball_diagnostics(
+    *,
+    visible_labels: list[GroundTruthLabel],
+    matches: list[CandidateMatch],
+) -> list[BallCandidateDiagnostic]:
+    labels_by_ball: dict[int, list[GroundTruthLabel]] = defaultdict(list)
+    matches_by_ball: dict[int, list[CandidateMatch]] = defaultdict(list)
+
+    for label in visible_labels:
+        labels_by_ball[label.ball_id].append(label)
+    for match in matches:
+        matches_by_ball[match.ball_id].append(match)
+
+    diagnostics: list[BallCandidateDiagnostic] = []
+    for ball_id in sorted(labels_by_ball):
+        labels = labels_by_ball[ball_id]
+        ball_matches = matches_by_ball.get(ball_id, [])
+        held_labels = [label for label in labels if label.held is True]
+        free_labels = [label for label in labels if label.held is False]
+        held_matches = [match for match in ball_matches if match.held is True]
+        free_matches = [match for match in ball_matches if match.held is False]
+
+        diagnostics.append(
+            BallCandidateDiagnostic(
+                ball_id=ball_id,
+                visible_labels=len(labels),
+                matches=len(ball_matches),
+                misses=len(labels) - len(ball_matches),
+                recall=_rate(len(ball_matches), len(labels)),
+                held_visible_labels=len(held_labels),
+                held_matches=len(held_matches),
+                held_recall=_rate(len(held_matches), len(held_labels)),
+                free_visible_labels=len(free_labels),
+                free_matches=len(free_matches),
+                free_recall=_rate(len(free_matches), len(free_labels)),
+            )
+        )
+    return diagnostics
+
+
 def evaluate_candidate_predictions(
     *,
     labels: list[GroundTruthLabel],
@@ -239,6 +346,10 @@ def evaluate_candidate_predictions(
     for prediction in scored_predictions:
         source_counts[prediction.source] = source_counts.get(prediction.source, 0) + 1
 
+    source_match_counts: dict[str, int] = {}
+    for match in all_matches:
+        source_match_counts[match.source] = source_match_counts.get(match.source, 0) + 1
+
     summary = CandidateEvaluationSummary(
         radius_px=radius_px,
         labelled_frames=len(label_frames),
@@ -266,7 +377,18 @@ def evaluate_candidate_predictions(
     return CandidateEvaluation(
         summary=summary,
         matches=all_matches,
+        frame_diagnostics=_frame_diagnostics(
+            label_frames=label_frames,
+            labels_by_frame=labels_by_frame,
+            predictions_by_frame=predictions_by_frame,
+            matches=all_matches,
+        ),
+        ball_diagnostics=_ball_diagnostics(
+            visible_labels=visible_labels,
+            matches=all_matches,
+        ),
         source_counts=source_counts,
+        source_match_counts=source_match_counts,
     )
 
 
@@ -296,7 +418,14 @@ def candidate_evaluation_to_dict(
     return {
         "summary": asdict(evaluation.summary),
         "source_counts": evaluation.source_counts,
+        "source_match_counts": evaluation.source_match_counts,
         "matches": [asdict(match) for match in evaluation.matches],
+        "frame_diagnostics": [
+            asdict(diagnostic) for diagnostic in evaluation.frame_diagnostics
+        ],
+        "ball_diagnostics": [
+            asdict(diagnostic) for diagnostic in evaluation.ball_diagnostics
+        ],
     }
 
 

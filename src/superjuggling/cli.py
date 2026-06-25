@@ -373,6 +373,33 @@ def cmd_evaluate_candidates(args: argparse.Namespace) -> int:
         print("Candidate sources:")
         for source, count in sorted(evaluation.source_counts.items()):
             print(f"  {source}: {count}")
+    if evaluation.source_match_counts:
+        print("Matched sources:")
+        for source, count in sorted(evaluation.source_match_counts.items()):
+            print(f"  {source}: {count}")
+
+    worst_frames = sorted(
+        [row for row in evaluation.frame_diagnostics if row.misses],
+        key=lambda row: (row.misses, row.false_positives),
+        reverse=True,
+    )[:5]
+    if worst_frames:
+        print("Worst missed frames:")
+        for row in worst_frames:
+            print(
+                f"  frame {row.frame_index}: "
+                f"{row.misses} misses, {row.matches}/{row.visible_labels} matched, "
+                f"{row.false_positives} false positives"
+            )
+
+    if evaluation.ball_diagnostics:
+        print("Recall by ball:")
+        for row in evaluation.ball_diagnostics:
+            print(
+                f"  ball {row.ball_id}: "
+                f"{row.matches}/{row.visible_labels} matched, "
+                f"{row.recall if row.recall is not None else 0.0:.3f} recall"
+            )
     if args.out is not None:
         print(f"Wrote {args.out}")
     return 0

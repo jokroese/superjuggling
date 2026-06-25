@@ -257,10 +257,20 @@ F1
 mean/median matched error
 held recall
 free-flight recall
+worst missed frames
+recall by ball ID
 ```
 
 Only frames present in the label CSV are scored. For the first benchmark, that
 means frames `0..71`; predictions from later frames are ignored.
+
+The JSON report also includes diagnostics:
+
+| Field | Purpose |
+|—|—|
+| `frame_diagnostics` | Per-frame visible labels, predictions, matches, misses, false positives, recall and precision |
+| `ball_diagnostics` | Per-ball visible labels, matches, misses, recall, held recall and free-flight recall |
+| `source_match_counts` | How many matched candidates came from each source |
 
 ---
 

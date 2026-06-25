@@ -129,6 +129,38 @@ def test_evaluate_candidate_predictions_scores_only_labelled_frames() -> None:
     assert summary.free_matches == 1
     assert summary.free_recall == 0.5
     assert evaluation.source_counts == {"heatmap": 3, "yolo": 1}
+    assert evaluation.source_match_counts == {"heatmap": 1, "yolo": 1}
+
+    assert [row.frame_index for row in evaluation.frame_diagnostics] == [0, 1]
+    frame0 = evaluation.frame_diagnostics[0]
+    assert frame0.frame_index == 0
+    assert frame0.visible_labels == 2
+    assert frame0.predicted_candidates == 3
+    assert frame0.matches == 2
+    assert frame0.misses == 0
+    assert frame0.false_positives == 1
+    assert frame0.recall == 1.0
+    assert frame0.precision == 0.666667
+
+    frame1 = evaluation.frame_diagnostics[1]
+    assert frame1.frame_index == 1
+    assert frame1.visible_labels == 1
+    assert frame1.predicted_candidates == 1
+    assert frame1.matches == 0
+    assert frame1.misses == 1
+    assert frame1.false_positives == 1
+    assert frame1.recall == 0.0
+    assert frame1.precision == 0.0
+
+    by_ball = {row.ball_id: row for row in evaluation.ball_diagnostics}
+    assert by_ball[1].visible_labels == 2
+    assert by_ball[1].matches == 1
+    assert by_ball[1].misses == 1
+    assert by_ball[1].recall == 0.5
+    assert by_ball[2].visible_labels == 1
+    assert by_ball[2].matches == 1
+    assert by_ball[2].misses == 0
+    assert by_ball[2].held_recall == 1.0
 
 
 def test_read_candidate_predictions_csv(tmp_path: Path) -> None:
@@ -177,3 +209,6 @@ def test_evaluate_candidate_csv_and_write_json(tmp_path: Path) -> None:
     assert payload["summary"]["matches"] == 2
     assert payload["summary"]["predicted_candidates"] == 4
     assert len(payload["matches"]) == 2
+    assert payload["source_match_counts"] == {"heatmap": 1, "yolo": 1}
+    assert len(payload["frame_diagnostics"]) == 2
+    assert len(payload["ball_diagnostics"]) == 2

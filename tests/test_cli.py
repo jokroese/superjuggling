@@ -116,6 +116,8 @@ def test_evaluate_candidates_cli_writes_report(
     assert "Visible labels: 1" in captured.out
     assert "Predicted candidates on labelled frames: 1" in captured.out
     assert "Recall: 1.000" in captured.out
+    assert "Matched sources:" in captured.out
+    assert "Recall by ball:" in captured.out
 
 
 def test_analyze_parser_accepts_yolo_confidence() -> None:
