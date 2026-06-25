@@ -24,3 +24,5 @@ runs/*
 !runs/.gitkeep
 
 repomix-output.xml
+repomix.config.json
+.repomixignore

@@ -5,7 +5,7 @@ build-backend = "uv_build"
 [project]
 name = "superjuggling"
 version = "0.1.0"
-description = "Juggling consistency tracker — turns a juggling clip into consistency metrics."
+description = "Juggling ball tracker — turns a juggling clip into inspectable ball trajectories."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

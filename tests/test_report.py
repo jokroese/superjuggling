@@ -1,53 +1,66 @@
-"""Tests for the report writer (tech spec §6)."""
+"""Tests for the tracking report writer."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from superjuggling.metrics import compute_metrics
-from superjuggling.models import DropEvent, Hand, ThrowEvent, Timelines, VideoMeta
+import numpy as np
+
+from superjuggling.models import CandidateFrame, TrackingSummary, Trajectory, VideoMeta
 from superjuggling.report import build_report, write_report
 
 
-def _fixture() -> tuple[VideoMeta, Timelines]:
+def _fixture() -> tuple[
+    VideoMeta, list[CandidateFrame], list[Trajectory], TrackingSummary
+]:
     meta = VideoMeta("run1.mp4", fps=60.0, total_frames=600, width=1920, height=1080)
-    throws = [
-        ThrowEvent(
-            t=i * 0.25,
-            track_id=i % 3,
-            hand=Hand.LEFT if i % 2 else Hand.RIGHT,
-            apex_x=600.0 if i % 2 else 900.0,
-            apex_y=300.0,
-            height_px=240.0,
-        )
-        for i in range(20)
+    frames = [
+        CandidateFrame(frame_index=i, t=i / 60.0, candidates=[]) for i in range(10)
     ]
-    tl = Timelines(throws=throws, drops=[DropEvent(t=4.0, track_id=1)])
-    return meta, tl
+    trajectories = [
+        Trajectory(
+            track_id=1,
+            t=np.asarray([0.0, 0.1, 0.2]),
+            x=np.asarray([100.0, 110.0, 120.0]),
+            y=np.asarray([200.0, 190.0, 210.0]),
+            confidence=np.asarray([0.8, 0.9, 0.85]),
+        )
+    ]
+    summary = TrackingSummary(
+        frames=10,
+        candidates=0,
+        trajectories=1,
+        trajectory_points=3,
+        estimated_props=1,
+        backend="bytetrack",
+        mean_track_points=3.0,
+        median_track_points=3.0,
+    )
+    return meta, frames, trajectories, summary
 
 
-def test_build_report_matches_schema() -> None:
-    meta, tl = _fixture()
-    metrics = compute_metrics(tl, meta.duration_s)
-    report = build_report(meta, tl, metrics, n_tracks=3, count_estimate=3)
+def test_build_tracking_report_matches_schema() -> None:
+    meta, frames, trajectories, summary = _fixture()
+    report = build_report(
+        meta=meta,
+        candidate_frames=frames,
+        trajectories=trajectories,
+        summary=summary,
+    )
 
     assert report["video"]["path"] == "run1.mp4"  # type: ignore[index]
-    assert report["props"]["tracks"] == 3  # type: ignore[index]
-    assert len(report["events"]["throws"]) == 20  # type: ignore[index]
-    assert "rhythm" in report["metrics"]  # type: ignore[operator]
-    # Events serialise hand as the string enum value.
-    assert report["events"]["throws"][0]["hand"] in {"L", "R", "?"}  # type: ignore[index]
+    assert report["tracking"]["trajectories"] == 1  # type: ignore[index]
+    assert len(report["trajectories"]) == 1  # type: ignore[arg-type]
 
 
 def test_write_report_creates_files(tmp_path: Path) -> None:
-    meta, tl = _fixture()
-    metrics = compute_metrics(tl, meta.duration_s)
-    paths = write_report(meta, tl, metrics, tmp_path, n_tracks=3, count_estimate=3)
+    meta, frames, trajectories, summary = _fixture()
+    paths = write_report(meta, frames, trajectories, summary, tmp_path)
 
     assert paths["json"].exists()
     assert paths["markdown"].exists()
 
     loaded = json.loads(paths["json"].read_text())
-    assert loaded["metrics"]["overall_consistency"] >= 0.0
-    assert "# Superjuggling" in paths["markdown"].read_text()
+    assert loaded["tracking"]["backend"] == "bytetrack"
+    assert "# Superjuggling — Ball Tracking Report" in paths["markdown"].read_text()

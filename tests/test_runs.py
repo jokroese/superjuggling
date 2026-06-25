@@ -48,7 +48,7 @@ def test_prepare_run_dir_refuses_non_empty_explicit_out(tmp_path: Path) -> None:
     video.write_bytes(b"video")
     out = tmp_path / "existing"
     out.mkdir()
-    (out / "metrics.json").write_text("{}")
+    (out / "tracking.json").write_text("{}")
 
     with pytest.raises(FileExistsError):
         prepare_run_dir(path=video, out_dir=out, runs_dir=tmp_path, overwrite=False)
@@ -86,5 +86,5 @@ def test_write_run_sidecars(tmp_path: Path) -> None:
 
     metadata = json.loads(paths["run"].read_text())
     assert metadata["run_id"] == "manual"
-    assert metadata["outputs"]["metrics"] == "metrics.json"
+    assert metadata["outputs"]["tracking"] == "tracking.json"
     assert metadata["outputs"]["annotated_video"] == "annotated.mp4"

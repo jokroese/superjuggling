@@ -1,7 +1,7 @@
 """Centre-point candidate generation, filtering, fusion and debug output.
 
-The detector may produce boxes, heatmaps, blobs or temporal predictions. The
-rest of the tracking architecture consumes ``BallCandidate`` objects.
+The current detector produces boxes, which are normalised into centre candidates.
+Everything downstream consumes ``BallCandidate`` objects.
 """
 
 from __future__ import annotations

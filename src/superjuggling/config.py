@@ -1,7 +1,7 @@
-"""Tunable configuration for the pipeline.
+"""Tunable configuration for the ball-tracking pipeline.
 
-Everything that the tech spec calls out as "tuned" or "configurable" lives
-here so it can be tweaked per clip / prop-count tier without touching logic.
+Keep this lean while the project is pre-release: expose only settings that
+directly affect candidate generation, linking and tracking artefacts.
 """
 
 from __future__ import annotations
@@ -29,9 +29,6 @@ class DetectionConfig:
     # Props are small and motion-blurred at the apex, so the threshold is low
     # and we lean on tracking + smoothing to suppress spurious detections.
     confidence: float = 0.2
-    # Candidate source mode. ``temporal`` and ``sliced`` are architecture seams;
-    # ``yolo`` remains the implemented default candidate source.
-    mode: Literal["yolo", "sliced", "temporal", "hybrid"] = "yolo"
     # Smoke-test escape hatch (tech spec §4.2): when no fine-tuned weights exist,
     # fall back to COCO ``yolov8n.pt`` filtered to the "sports ball" class. The
     # spec warns these detections are unreliable for fast props — plumbing only.
@@ -53,22 +50,12 @@ class CandidateConfig:
 class LinkingConfig:
     """Candidate linking backend and association thresholds."""
 
-    backend: Literal["bytetrack", "centre", "physics"] = "bytetrack"
+    backend: Literal["bytetrack", "centre", "ballistic"] = "bytetrack"
     max_match_distance_px: float = 80.0
     max_gap_s: float = 0.18
     min_track_points: int = 3
     confidence_bonus_px: float = 12.0
     physics_residual_weight: float = 0.35
-
-
-@dataclass
-class SegmentConfig:
-    """Flight-segment fitting settings."""
-
-    enabled: bool = True
-    min_points: int = 5
-    max_gap_s: float = 0.20
-    max_rms_px: float = 35.0
 
 
 @dataclass
@@ -82,51 +69,9 @@ class TrackingConfig:
 
 
 @dataclass
-class EventConfig:
-    """Apex / catch / drop extraction parameters (tech spec §4.4)."""
-
-    # Minimum vertical prominence (px) of an apex to count as a throw — filters
-    # micro-jitter.
-    apex_min_prominence: float = 15.0
-    # Refractory period between consecutive throws on one trajectory (seconds).
-    min_inter_throw_s: float = 0.15
-    # Refine apex timing/height with a local quadratic fit. This is intentionally
-    # short-window rather than whole-flight physics fitting: the tracker can
-    # fragment or swap IDs, but the samples near a detected apex are usually the
-    # most reliable part of the flight.
-    parabolic_refine: bool = True
-    # Half-window around a detected apex candidate used for the local quadratic
-    # fit. At 60 fps, 0.10s gives up to ~13 samples; at 30 fps, ~7 samples.
-    apex_fit_half_window_s: float = 0.10
-    # Minimum samples required before using the windowed fit. Otherwise the
-    # extractor falls back to the previous 3-point vertex refinement.
-    apex_fit_min_points: int = 5
-    # Reject noisy local fits rather than trusting a bad parabola.
-    apex_fit_max_rms_px: float = 25.0
-    # A drop is confirmed when a lost track's last centre sits in the bottom
-    # fraction of the frame.
-    floor_zone_fraction: float = 0.85
-    # Frames a track must be missing before it is considered lost.
-    lost_after_frames: int = 60
-
-
-@dataclass
-class ScoreWeights:
-    """Weights for the composite consistency score (tech spec §5.5)."""
-
-    rhythm: float = 0.3
-    spatial: float = 0.3
-    symmetry: float = 0.2
-    failure: float = 0.2
-
-
-@dataclass
 class Config:
     ingest: IngestConfig = field(default_factory=IngestConfig)
     detection: DetectionConfig = field(default_factory=DetectionConfig)
     candidates: CandidateConfig = field(default_factory=CandidateConfig)
     linking: LinkingConfig = field(default_factory=LinkingConfig)
-    segments: SegmentConfig = field(default_factory=SegmentConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
-    events: EventConfig = field(default_factory=EventConfig)
-    weights: ScoreWeights = field(default_factory=ScoreWeights)

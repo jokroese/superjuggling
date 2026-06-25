@@ -46,7 +46,7 @@ def _resolve_video_path(value: str, videos_dir: Path = Path("data/videos")) -> P
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="superjuggling",
-        description="Juggling consistency tracker — turn a clip into metrics.",
+        description="Juggling ball tracker — turn a clip into trajectories.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -110,15 +110,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     analyze.add_argument(
         "--tracking",
-        choices=["bytetrack", "centre", "physics"],
+        choices=["bytetrack", "centre", "ballistic"],
         default="bytetrack",
         help="Tracking/linking backend (default: bytetrack).",
-    )
-    analyze.add_argument(
-        "--detect-mode",
-        choices=["yolo", "sliced", "temporal", "hybrid"],
-        default="yolo",
-        help="Candidate detection mode (default: yolo).",
     )
     analyze.add_argument(
         "--candidate-min-score",
@@ -135,7 +129,6 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # a detector first. Library/default Config can remain stricter later if
     # desired; the command-line tool optimises for a smooth local workflow.
     cfg.detection.allow_coco = not args.require_model
-    cfg.detection.mode = args.detect_mode
     cfg.linking.backend = args.tracking
     if args.candidate_min_score is not None:
         cfg.candidates.min_score = args.candidate_min_score
@@ -194,7 +187,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         f"Analyzed {result.meta.path} "
         f"({result.meta.duration_s:.1f}s, ~{result.count_estimate} props)"
     )
-    print(f"Overall consistency: {result.metrics.overall_consistency:.0f}/100")
+    print(f"Trajectories: {result.summary.trajectories}")
+    print(f"Candidate detections: {result.summary.candidates}")
     print(f"Run written to {result.out_dir}/")
     if annotate:
         print(f"Annotated video written to {result.out_dir / 'annotated.mp4'}")
@@ -203,7 +197,6 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             "note: used COCO sports-ball fallback; fine-tuned prop weights are recommended"
         )
     print(f"Tracking backend: {cfg.linking.backend}")
-    print(f"Detection mode: {cfg.detection.mode}")
     if args.debug_overlays:
         print("Diagnostic overlays enabled")
     return 0

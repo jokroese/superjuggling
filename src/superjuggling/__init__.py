@@ -1,39 +1,24 @@
-"""Superjuggling — juggling consistency tracker.
+"""Superjuggling — juggling ball tracker.
 
-Public API. The analytical core (events / metrics / report / models / config)
-imports with no heavy dependencies; the video pipeline stages require the
-optional ``cv`` extra (``uv sync --extra cv``).
+Public API. The tracking core (models / config / report) imports with no heavy
+dependencies; the video pipeline stages require the optional ``cv`` extra
+(``uv sync --extra cv``).
 """
 
 from .config import Config
-from .metrics import MetricsReport, compute_metrics
 from .models import (
     BallCandidate,
-    CatchEvent,
     CandidateFrame,
-    DropEvent,
-    FlightSegment,
-    Hand,
-    HandTrack,
-    ThrowEvent,
-    Timelines,
+    TrackingSummary,
     Trajectory,
     VideoMeta,
 )
 
 __all__ = [
     "BallCandidate",
-    "CatchEvent",
     "CandidateFrame",
     "Config",
-    "DropEvent",
-    "FlightSegment",
-    "Hand",
-    "HandTrack",
-    "MetricsReport",
-    "ThrowEvent",
-    "Timelines",
+    "TrackingSummary",
     "Trajectory",
     "VideoMeta",
-    "compute_metrics",
 ]

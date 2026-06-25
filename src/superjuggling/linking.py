@@ -223,7 +223,7 @@ class CentreLinker:
         return out
 
 
-class PhysicsLinker(CentreLinker):
+class BallisticLinker(CentreLinker):
     """Centre linker with short-window ballistic consistency in the cost."""
 
     def _association_cost(
@@ -279,10 +279,10 @@ def link_candidate_frames(
     """Run the selected pure-Python candidate linker."""
     if cfg.backend == "centre":
         linker: CentreLinker = CentreLinker(cfg)
-    elif cfg.backend == "physics":
-        linker = PhysicsLinker(cfg)
+    elif cfg.backend == "ballistic":
+        linker = BallisticLinker(cfg)
     else:
-        msg = "link_candidate_frames only supports centre/physics backends"
+        msg = "link_candidate_frames only supports centre/ballistic backends"
         raise ValueError(msg)
 
     for frame in frames:

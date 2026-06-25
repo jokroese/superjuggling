@@ -28,7 +28,7 @@ def test_centre_linker_links_smooth_motion() -> None:
     assert rows
 
 
-def test_physics_linker_links_parabolic_motion() -> None:
+def test_ballistic_linker_links_parabolic_motion() -> None:
     frames: list[CandidateFrame] = []
     for i in range(20):
         t = i / 60.0
@@ -44,7 +44,7 @@ def test_physics_linker_links_parabolic_motion() -> None:
 
     trajectories, _ = link_candidate_frames(
         frames,
-        LinkingConfig(backend="physics", min_track_points=5),
+        LinkingConfig(backend="ballistic", min_track_points=5),
     )
 
     assert len(trajectories) == 1

@@ -1,8 +1,7 @@
-"""Stage 6b — Report (tech spec §6).
+"""Tracking report writer.
 
-Writes ``metrics.json`` (machine-readable, schema per §6) and a human-readable
-markdown summary. Plotting is intentionally decoupled and lives behind the
-``cv`` extra (matplotlib); it is skipped when unavailable.
+Writes a machine-readable ``tracking.json`` and a short ``summary.md`` focused
+only on ball candidates and trajectories.
 """
 
 from __future__ import annotations
@@ -11,18 +10,65 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from .metrics import MetricsReport
-from .models import Timelines, VideoMeta
+import numpy as np
+
+from .models import CandidateFrame, TrackingSummary, Trajectory, VideoMeta
+
+
+def build_tracking_summary(
+    *,
+    candidate_frames: list[CandidateFrame],
+    trajectories: list[Trajectory],
+    count_estimate: int,
+    backend: str,
+) -> TrackingSummary:
+    lengths = np.asarray([len(tr.t) for tr in trajectories], dtype=np.float64)
+    return TrackingSummary(
+        frames=len(candidate_frames),
+        candidates=sum(len(frame.candidates) for frame in candidate_frames),
+        trajectories=len(trajectories),
+        trajectory_points=int(sum(len(tr.t) for tr in trajectories)),
+        estimated_props=count_estimate,
+        backend=backend,
+        mean_track_points=round(float(np.mean(lengths)), 2) if len(lengths) else 0.0,
+        median_track_points=round(float(np.median(lengths)), 2)
+        if len(lengths)
+        else 0.0,
+    )
+
+
+def _trajectory_rows(trajectories: list[Trajectory]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for traj in trajectories:
+        confidence = traj.confidence
+        rows.append(
+            {
+                "track_id": traj.track_id,
+                "points": len(traj.t),
+                "t_start": float(traj.t[0]) if len(traj.t) else None,
+                "t_end": float(traj.t[-1]) if len(traj.t) else None,
+                "x_start": float(traj.x[0]) if len(traj.x) else None,
+                "y_start": float(traj.y[0]) if len(traj.y) else None,
+                "x_end": float(traj.x[-1]) if len(traj.x) else None,
+                "y_end": float(traj.y[-1]) if len(traj.y) else None,
+                "mean_confidence": (
+                    None
+                    if confidence is None or not len(confidence)
+                    else round(float(np.mean(confidence)), 4)
+                ),
+            }
+        )
+    return rows
 
 
 def build_report(
+    *,
     meta: VideoMeta,
-    timelines: Timelines,
-    metrics: MetricsReport,
-    n_tracks: int,
-    count_estimate: int,
+    candidate_frames: list[CandidateFrame],
+    trajectories: list[Trajectory],
+    summary: TrackingSummary,
 ) -> dict[str, object]:
-    """Assemble the full report dict matching the §6 schema."""
+    """Assemble the tracking report."""
     return {
         "video": {
             "path": meta.path,
@@ -30,20 +76,19 @@ def build_report(
             "duration_s": round(meta.duration_s, 2),
             "resolution": [meta.width, meta.height],
         },
-        "props": {"count_estimate": count_estimate, "tracks": n_tracks},
-        "events": {
-            "throws": [asdict(e) | {"hand": e.hand.value} for e in timelines.throws],
-            "catches": [asdict(e) | {"hand": e.hand.value} for e in timelines.catches],
-            "drops": [asdict(e) for e in timelines.drops],
+        "tracking": asdict(summary),
+        "candidates": {
+            "frames": len(candidate_frames),
+            "total": sum(len(frame.candidates) for frame in candidate_frames),
         },
-        "metrics": metrics.to_dict(),
+        "trajectories": _trajectory_rows(trajectories),
     }
 
 
 def write_json(report: dict[str, object], out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / "metrics.json"
-    path.write_text(json.dumps(report, indent=2))
+    path = out_dir / "tracking.json"
+    path.write_text(json.dumps(report, indent=2) + "\n")
     return path
 
 
@@ -56,75 +101,48 @@ def write_markdown(report: dict[str, object], out_dir: Path) -> Path:
 
 def _render_markdown(report: dict[str, object]) -> str:
     video = report["video"]
-    props = report["props"]
-    metrics = report["metrics"]
+    tracking = report["tracking"]
     assert isinstance(video, dict)
-    assert isinstance(props, dict)
-    assert isinstance(metrics, dict)
-
-    rhythm = metrics["rhythm"]
-    spatial = metrics["spatial"]
-    symmetry = metrics["symmetry"]
-    failure = metrics["failure"]
-    scores = metrics["scores"]
+    assert isinstance(tracking, dict)
 
     lines = [
-        "# Superjuggling — Consistency Report",
+        "# Superjuggling — Ball Tracking Report",
         "",
         f"**Clip:** `{video['path']}`  ",
         f"**Duration:** {video['duration_s']} s · "
         f"**fps:** {video['fps']} · "
         f"**resolution:** {video['resolution'][0]}×{video['resolution'][1]}  ",
-        f"**Props (estimate):** {props['count_estimate']} · "
-        f"**tracks:** {props['tracks']}",
         "",
-        f"## Overall consistency: **{metrics['overall_consistency']} / 100**",
+        "## Tracking summary",
         "",
-        "| Domain | Score |",
-        "|---|---|",
-        f"| Rhythm | {scores['rhythm']} |",
-        f"| Spatial | {scores['spatial']} |",
-        f"| Symmetry | {scores['symmetry']} |",
-        f"| Failure | {scores['failure']} |",
+        f"- Backend: **{tracking['backend']}**",
+        f"- Frames analysed: {tracking['frames']}",
+        f"- Centre candidates: {tracking['candidates']}",
+        f"- Trajectories: {tracking['trajectories']}",
+        f"- Trajectory points: {tracking['trajectory_points']}",
+        f"- Estimated props: {tracking['estimated_props']}",
+        f"- Mean track length: {tracking['mean_track_points']} points",
+        f"- Median track length: {tracking['median_track_points']} points",
         "",
-        "### Rhythm (§5.1)",
-        f"- Cadence: **{rhythm['cadence_hz']} Hz**",
-        f"- Inter-throw-interval CV: {rhythm['iti_cv']}",
-        f"- Hand-dwell CV: {rhythm['dwell_cv']}",
-        f"- L/R tempo balance: {rhythm['lr_tempo_balance']}",
-        "",
-        "### Height & placement (§5.2)",
-        f"- Throw-height CV: {spatial['height_cv']}",
-        f"- Apex-lateral CV: {spatial['apex_lateral_cv']}",
-        f"- Pattern width: {spatial['pattern_width_px']} px",
-        f"- Envelope drift: {spatial['envelope_drift']}",
-        f"- Height/cadence coherence: {spatial['height_cadence_coherence']}",
-        "",
-        "### Symmetry (§5.3)",
-        f"- L/R height symmetry: {symmetry['lr_height_symmetry']}",
-        f"- L/R placement symmetry: {symmetry['lr_placement_symmetry']}",
-        f"- Throw balance (L fraction): {symmetry['throw_balance']}",
-        "",
-        "### Failure & endurance (§5.4)",
-        f"- Drops: {failure['drops']} ({failure['drop_rate_per_min']} / min)",
-        f"- Longest clean run: {failure['longest_clean_run_s']} s",
-        f"- Recovery time: {failure['recovery_s']} s",
-        "",
-        "_Generated by superjuggling (draft)._",
+        "_This pre-release report is intentionally limited to ball-tracking diagnostics._",
     ]
     return "\n".join(lines)
 
 
 def write_report(
     meta: VideoMeta,
-    timelines: Timelines,
-    metrics: MetricsReport,
+    candidate_frames: list[CandidateFrame],
+    trajectories: list[Trajectory],
+    summary: TrackingSummary,
     out_dir: Path,
-    n_tracks: int,
-    count_estimate: int,
 ) -> dict[str, Path]:
-    """Write JSON + markdown and return the paths."""
-    report = build_report(meta, timelines, metrics, n_tracks, count_estimate)
+    """Write JSON + markdown tracking reports and return the paths."""
+    report = build_report(
+        meta=meta,
+        candidate_frames=candidate_frames,
+        trajectories=trajectories,
+        summary=summary,
+    )
     return {
         "json": write_json(report, out_dir),
         "markdown": write_markdown(report, out_dir),

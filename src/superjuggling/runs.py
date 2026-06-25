@@ -162,7 +162,7 @@ def write_run_sidecar(
     """Write metadata/provenance for this run."""
     input_stat = input_path.stat()
     outputs: dict[str, str] = {
-        "metrics": "metrics.json",
+        "tracking": "tracking.json",
         "summary": "summary.md",
         "config": "config.json",
         "command": "command.txt",

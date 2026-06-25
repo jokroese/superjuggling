@@ -3,7 +3,7 @@
 Detection / tracking / annotation depend on supervision, ultralytics and
 OpenCV, which are heavy and not installed in the default dev/CI environment.
 These imports are deferred to call time and raise a clear, actionable error
-when the extra is missing — keeping the metrics engine and tests dependency-free.
+when the extra is missing — keeping the tracking core and tests dependency-free.
 """
 
 from __future__ import annotations
