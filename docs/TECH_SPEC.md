@@ -177,6 +177,22 @@ CV dependency, so it is unit-testable against synthetic timelines.
 
 ### 4.6 Outputs
 
+**Run directory.** Each CLI invocation writes to a dedicated directory under
+`runs/` (default name: `YYYY-MM-DD_HHMMSS_<video-stem>_<input-hash>/`; override
+with `--out`). Input clips live in `data/videos/`; local model weights in
+`models/`.
+
+Per-run artefacts:
+
+| File | Purpose |
+|------|---------|
+| `metrics.json` | Machine-readable metrics report (schema in §6) |
+| `summary.md` | Human-readable summary |
+| `annotated.mp4` | Annotated video, when `--annotate` or `--debug-overlays` is enabled |
+| `config.json` | Effective configuration used for the run |
+| `run.json` | Provenance: input hash, output names, options, git and environment metadata |
+| `command.txt` | Exact command invocation |
+
 **Annotated video** via supervision annotators written through `sv.VideoSink`:
 - `sv.TraceAnnotator` — motion trails per prop (the signature juggling arcs).
 - `sv.BoxAnnotator` / `sv.DotAnnotator` — prop boxes/centers with track IDs.
@@ -184,9 +200,9 @@ CV dependency, so it is unit-testable against synthetic timelines.
 - Custom overlay: live cadence, drop count, current consistency score, apex
   markers flashed at throw events, the floor drop-zone outline.
 
-**Report**: `metrics.json` (schema in §6), a markdown summary, and PNG plots
-(inter-throw-interval over time, apex-height distribution, left/right balance,
-pattern envelope). Plotting is matplotlib, decoupled from the pipeline.
+**Report** (see table above): future PNG plots (inter-throw-interval over time,
+apex-height distribution, left/right balance, pattern envelope). Plotting is
+matplotlib, decoupled from the pipeline; not yet implemented.
 
 ---
 
@@ -326,8 +342,9 @@ statistics engine (stage 5).
 - `supervision`, `ultralytics` (YOLO), `numpy`, `scipy` (peak finding, signal
   processing), `pandas`, `matplotlib`
 - `opencv-python` (transitively via supervision; used for custom overlays)
-- CLI first: `superjuggling analyze run1.mp4 --out report/`. Optional thin FastAPI
-  wrapper later for upload-and-analyze.
+- CLI first: `superjuggling analyze data/videos/run1.mp4 --annotate` (writes to
+  `runs/<timestamp>_<video-stem>_<input-hash>/`; use `--out` for a fixed path).
+  Optional thin FastAPI wrapper later for upload-and-analyze.
 - Tests: pytest, with synthetic trajectory/timeline fixtures for the metrics
   engine and a few short golden clips for the full pipeline.
 

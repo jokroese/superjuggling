@@ -32,13 +32,35 @@ uv run pytest
 
 # Full video pipeline (downloads the CV stack: supervision, ultralytics, ...):
 uv sync --extra cv
-uv run superjuggling analyze run1.mp4 --out report/ --annotate
+uv run superjuggling analyze data/videos/run1.mp4 --annotate
 ```
 
-Outputs `report/metrics.json` (schema in tech spec §6), `report/summary.md`, and
-— with `--annotate` — `report/annotated.mp4` showing per-prop motion trails,
-`#id` track tags, wrist keypoints, the floor drop-zone, throw-apex flashes, and a
-live metrics HUD (consistency score, cadence, running throw/drop counts).
+By default each analysis writes to a fresh run directory:
+
+`runs/YYYY-MM-DD_HHMMSS_<video-stem>_<input-hash>/`
+
+For example:
+
+`runs/2026-06-25_153012_run1_8f3a2c1/`
+
+Each run contains:
+
+| File | Purpose |
+|------|---------|
+| `metrics.json` | Machine-readable metrics report, schema in tech spec §6 |
+| `summary.md` | Human-readable summary |
+| `annotated.mp4` | Annotated video, when `--annotate` or `--debug-overlays` is enabled |
+| `config.json` | Effective configuration used for the run |
+| `run.json` | Input hash, output names, options, code and environment metadata |
+| `command.txt` | Exact command invocation |
+
+To choose a fixed output directory:
+
+```bash
+uv run superjuggling analyze data/videos/run1.mp4 --out runs/manual-test
+```
+
+Existing output directories are not overwritten unless you pass `--overwrite`.
 
 The prop detector needs fine-tuned weights (`--out` aside, set
 `Config.detection.model_path`); COCO's "sports ball" class is unreliable for fast
@@ -53,7 +75,7 @@ pre-tracking detections, low-confidence highlights, recent trajectory samples,
 drop flashes, and per-frame debug counts:
 
 ```bash
-uv run superjuggling analyze run1.mp4 --out report/ --debug-overlays
+uv run superjuggling analyze data/videos/run1.mp4 --debug-overlays --allow-coco
 ```
 
 ---

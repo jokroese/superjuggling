@@ -6,6 +6,7 @@ superjuggling analyze run1.mp4 --out report/
 from __future__ import annotations
 
 import argparse
+import shlex
 import sys
 from pathlib import Path
 
@@ -28,8 +29,22 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--out",
         type=Path,
-        default=Path("report"),
-        help="Output directory for metrics.json / summary.md (default: report/).",
+        default=None,
+        help=(
+            "Output directory for this run. Defaults to "
+            "runs/<timestamp>_<video-stem>_<input-hash>/."
+        ),
+    )
+    analyze.add_argument(
+        "--runs-dir",
+        type=Path,
+        default=Path("runs"),
+        help="Root directory for auto-created run outputs (default: runs/).",
+    )
+    analyze.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow writing into an existing --out directory.",
     )
     analyze.add_argument(
         "--annotate",
@@ -55,11 +70,25 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     cfg = Config()
     cfg.detection.allow_coco = args.allow_coco
     annotate = bool(args.annotate or args.debug_overlays)
+    command = " ".join(shlex.quote(part) for part in sys.argv)
     try:
-        result = run(args.video, args.out, cfg, annotate=annotate, debug_overlays=args.debug_overlays)
+        result = run(
+            args.video,
+            args.out,
+            cfg,
+            annotate=annotate,
+            debug_overlays=args.debug_overlays,
+            runs_dir=args.runs_dir,
+            overwrite=args.overwrite,
+            command=command,
+        )
     except MissingCVDependency as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    except FileExistsError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        print("hint: choose a different --out or pass --overwrite.", file=sys.stderr)
+        return 1
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         if args.debug_overlays and not args.allow_coco:
@@ -81,9 +110,9 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         f"({result.meta.duration_s:.1f}s, ~{result.count_estimate} props)"
     )
     print(f"Overall consistency: {result.metrics.overall_consistency:.0f}/100")
-    print(f"Report written to {args.out}/")
+    print(f"Run written to {result.out_dir}/")
     if annotate:
-        print(f"Annotated video written to {args.out / 'annotated.mp4'}")
+        print(f"Annotated video written to {result.out_dir / 'annotated.mp4'}")
     if args.debug_overlays:
         print("Diagnostic overlays enabled")
     return 0

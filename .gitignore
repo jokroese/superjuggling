@@ -12,8 +12,15 @@ uv.lock.bak
 
 # Downloaded model weights (fetched on demand by ultralytics)
 *.pt
+models/*
+!models/.gitkeep
 
-# Local analysis artifacts: input clips, generated reports, annotated video
-*.mp4
-report/
+# Local source videos
+data/videos/*
+!data/videos/.gitkeep
 
+# Generated per-run analysis artefacts
+runs/*
+!runs/.gitkeep
+
+repomix-output.xml

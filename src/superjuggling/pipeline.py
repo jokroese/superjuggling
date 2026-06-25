@@ -22,6 +22,7 @@ from .config import Config
 from .detection import YOLOPoseEstimator, YOLOPropDetector
 from .metrics import MetricsReport, compute_metrics
 from .models import Hand, HandTrack, Timelines, Trajectory, VideoMeta
+from .runs import prepare_run_dir, write_run_sidecars
 from .tracking import TrackAccumulator
 
 
@@ -40,6 +41,8 @@ class AnalysisResult:
     # Raw detector output before ByteTrack / smoothing. Populated only when
     # overlay data is collected; used by diagnostic annotation overlays.
     frame_raw_detections: list[Any] = field(default_factory=list)
+    # Output directory for this analysis run.
+    out_dir: Path = Path()
 
 
 def estimate_prop_count(trajectories: list[Trajectory], meta: VideoMeta) -> int:
@@ -128,27 +131,54 @@ def analyze_video(
 
 def run(
     path: str,
-    out_dir: Path,
+    out_dir: Path | None = None,
     cfg: Config | None = None,
     annotate: bool = False,
     debug_overlays: bool = False,
+    runs_dir: Path = Path("runs"),
+    overwrite: bool = False,
+    command: str | None = None,
 ) -> AnalysisResult:
     """Full analyze + write report (+ optional annotated video)."""
     cfg = cfg or Config()
+    run_dir, run_id, input_sha256 = prepare_run_dir(
+        path=Path(path),
+        out_dir=out_dir,
+        runs_dir=runs_dir,
+        overwrite=overwrite,
+    )
+
     collect_overlay = annotate or debug_overlays
     result = analyze_video(path, cfg, collect_overlay=collect_overlay)
+    result.out_dir = run_dir
+
     report_stage.write_report(
         result.meta,
         result.timelines,
         result.metrics,
-        out_dir,
+        run_dir,
         n_tracks=len(result.trajectories),
         count_estimate=result.count_estimate,
     )
+
+    annotated_path: Path | None = None
     if collect_overlay:
         from . import annotate as annotate_stage
 
+        annotated_path = run_dir / "annotated.mp4"
         annotate_stage.annotate_video(
-            result, out_dir / "annotated.mp4", cfg, debug_overlays=debug_overlays
+            result, annotated_path, cfg, debug_overlays=debug_overlays
         )
+
+    write_run_sidecars(
+        run_dir=run_dir,
+        run_id=run_id,
+        input_path=Path(path),
+        input_sha256=input_sha256,
+        cfg=cfg,
+        annotate=annotate,
+        debug_overlays=debug_overlays,
+        command=command,
+        annotated_path=annotated_path,
+    )
     return result
