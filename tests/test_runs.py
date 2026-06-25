@@ -60,6 +60,8 @@ def test_config_to_dict_contains_nested_sections() -> None:
 
     assert data["ingest"]["min_fps"] == 30.0
     assert "detection" in data
+    assert data["detection"]["confidence"] == 0.05
+    assert data["detection"]["candidate_source"] == "yolo"
     assert "tracking" in data
 
 

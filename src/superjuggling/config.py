@@ -28,11 +28,11 @@ class DetectionConfig:
     pose_model_path: str | None = None
     # Props are small and motion-blurred at the apex, so the threshold is low
     # and we lean on tracking + smoothing to suppress spurious detections.
-    confidence: float = 0.2
+    confidence: float = 0.05
     # Candidate source used by the tracking workbench. ``heatmap`` is a
     # multi-frame motion heatmap detector; ``hybrid`` fuses YOLO boxes and
     # heatmap peaks before linking.
-    candidate_source: Literal["yolo", "heatmap", "hybrid"] = "hybrid"
+    candidate_source: Literal["yolo", "heatmap", "hybrid"] = "yolo"
     # Smoke-test escape hatch (tech spec §4.2): when no fine-tuned weights exist,
     # fall back to COCO ``yolov8n.pt`` filtered to the "sports ball" class. The
     # spec warns these detections are unreliable for fast props — plumbing only.

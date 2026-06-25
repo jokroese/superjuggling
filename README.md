@@ -100,7 +100,7 @@ uv run superjuggling analyze run1
 which currently means:
 
 ```text
-YOLO boxes + multi-frame motion heatmap → fused centre candidates → ballistic linker → ball trajectories
+YOLO sports-ball boxes at confidence 0.05 → centre candidates → ballistic linker → ball trajectories
 ```
 
 Candidate sources:
@@ -130,6 +130,10 @@ uv run superjuggling analyze run1 \
   --tracking ballistic \
   --yolo-confidence 0.10
 ```
+
+The current measured baseline on `jobi-juggling-0000-0071` is YOLO-only at
+confidence `0.05`. In that benchmark it improved candidate F1 from `0.514`
+at confidence `0.20` to `0.748`, while keeping precision high.
 
 Lower confidence usually increases recall and may reduce precision. For a new
 label slice, run a small sweep:

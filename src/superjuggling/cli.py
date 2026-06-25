@@ -132,17 +132,17 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--candidate-source",
         choices=["yolo", "heatmap", "hybrid"],
-        default="hybrid",
+        default="yolo",
         help=(
             "Candidate source: YOLO boxes, multi-frame motion heatmap, "
-            "or fused hybrid candidates (default: hybrid)."
+            "or fused hybrid candidates (default: yolo)."
         ),
     )
     analyze.add_argument(
         "--yolo-confidence",
         type=float,
         default=None,
-        help="YOLO detector confidence threshold. Lower values increase recall.",
+        help="YOLO detector confidence threshold (default: 0.05). Lower values increase recall.",
     )
     analyze.add_argument(
         "--candidate-min-score",

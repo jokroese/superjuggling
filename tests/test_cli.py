@@ -184,3 +184,13 @@ def test_benchmark_candidates_parser_accepts_matrix_args() -> None:
     assert args.methods == "yolo,heatmap"
     assert args.yolo_confidences == "0.2,0.1"
     assert args.radius_px == 12
+
+
+def test_analyze_parser_defaults_to_measured_candidate_baseline() -> None:
+    parser = _build_parser()
+
+    args = parser.parse_args(["analyze", "clip"])
+
+    assert args.candidate_source == "yolo"
+    assert args.tracking == "ballistic"
+    assert args.yolo_confidence is None
