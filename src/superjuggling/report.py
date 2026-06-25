@@ -78,11 +78,23 @@ def build_report(
         },
         "tracking": asdict(summary),
         "candidates": {
+            "sources": _candidate_source_counts(candidate_frames),
             "frames": len(candidate_frames),
             "total": sum(len(frame.candidates) for frame in candidate_frames),
         },
         "trajectories": _trajectory_rows(trajectories),
     }
+
+
+def _candidate_source_counts(
+    candidate_frames: list[CandidateFrame],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for frame in candidate_frames:
+        for candidate in frame.candidates:
+            source = candidate.source
+            counts[source] = counts.get(source, 0) + 1
+    return counts
 
 
 def write_json(report: dict[str, object], out_dir: Path) -> Path:

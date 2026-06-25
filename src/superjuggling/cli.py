@@ -111,14 +111,35 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--tracking",
         choices=["bytetrack", "centre", "ballistic"],
-        default="bytetrack",
-        help="Tracking/linking backend (default: bytetrack).",
+        default="ballistic",
+        help="Tracking/linking backend (default: ballistic).",
+    )
+    analyze.add_argument(
+        "--candidate-source",
+        choices=["yolo", "heatmap", "hybrid"],
+        default="hybrid",
+        help=(
+            "Candidate source: YOLO boxes, multi-frame motion heatmap, "
+            "or fused hybrid candidates (default: hybrid)."
+        ),
     )
     analyze.add_argument(
         "--candidate-min-score",
         type=float,
         default=None,
         help="Minimum centre-candidate score before fusion/linking.",
+    )
+    analyze.add_argument(
+        "--heatmap-window-radius",
+        type=int,
+        default=None,
+        help="Neighbour frames on each side for heatmap detection.",
+    )
+    analyze.add_argument(
+        "--heatmap-min-score",
+        type=float,
+        default=None,
+        help="Minimum normalised heatmap score for peak candidates.",
     )
     return parser
 
@@ -130,8 +151,13 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # desired; the command-line tool optimises for a smooth local workflow.
     cfg.detection.allow_coco = not args.require_model
     cfg.linking.backend = args.tracking
+    cfg.detection.candidate_source = args.candidate_source
     if args.candidate_min_score is not None:
         cfg.candidates.min_score = args.candidate_min_score
+    if args.heatmap_window_radius is not None:
+        cfg.heatmap.window_radius = args.heatmap_window_radius
+    if args.heatmap_min_score is not None:
+        cfg.heatmap.min_score = args.heatmap_min_score
 
     video_path = _resolve_video_path(args.video)
 
@@ -197,6 +223,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             "note: used COCO sports-ball fallback; fine-tuned prop weights are recommended"
         )
     print(f"Tracking backend: {cfg.linking.backend}")
+    print(f"Candidate source: {cfg.detection.candidate_source}")
     if args.debug_overlays:
         print("Diagnostic overlays enabled")
     return 0

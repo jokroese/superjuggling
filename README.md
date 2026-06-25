@@ -12,7 +12,7 @@ Current architecture:
 | Stage | Module | Status |
 |---|---|---|
 | 1. Ingest | `ingest.py` | scaffold (needs `cv` extra) |
-| 2. Detection | `detection.py` | pluggable `Detector` interface + YOLO impls |
+| 2. Detection | `detection.py`, `heatmap.py` | YOLO boxes + multi-frame motion heatmaps |
 | 3. Candidates | `candidates.py` | YOLO boxes → centre candidates |
 | 4. Linking | `tracking.py`, `linking.py` | ByteTrack + experimental centre/ballistic linkers |
 | 5. Report | `report.py` | tracking JSON + markdown summary |
@@ -91,7 +91,7 @@ uv run superjuggling analyze run1 --no-annotate
 
 ### Tracking and candidate backends
 
-The default path is:
+The default path is candidate-native and motion-aware:
 
 ```bash
 uv run superjuggling analyze run1
@@ -100,15 +100,27 @@ uv run superjuggling analyze run1
 which currently means:
 
 ```text
-YOLO boxes → centre candidates → ByteTrack → ball trajectories
+YOLO boxes + multi-frame motion heatmap → fused centre candidates → ballistic linker → ball trajectories
 ```
 
-Experimental centre-point linkers are available:
+Candidate sources:
 
 ```bash
+uv run superjuggling analyze run1 --candidate-source yolo
+uv run superjuggling analyze run1 --candidate-source heatmap
+uv run superjuggling analyze run1 --candidate-source hybrid
+```
+
+Tracking/linking backends:
+
+```bash
+uv run superjuggling analyze run1 --tracking bytetrack --candidate-source yolo
 uv run superjuggling analyze run1 --tracking centre
 uv run superjuggling analyze run1 --tracking ballistic
 ```
+
+`bytetrack` is box-native, so it requires YOLO detections. `centre` and
+`ballistic` consume centre candidates from any source.
 
 ### Diagnostic overlays
 

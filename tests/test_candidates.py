@@ -80,3 +80,4 @@ def test_fuse_candidates_clusters_nearby_points() -> None:
     assert len(fused) == 2
     assert abs(fused[0].x - 10.666) < 0.01
     assert fused[0].source == "fused:a+b"
+    assert fused[0].score == 1.0

@@ -25,6 +25,7 @@ from .candidates import (
 )
 from .config import Config
 from .detection import YOLOPropDetector
+from .heatmap import MultiFrameHeatmapDetector, pad_window
 from .linking import link_candidate_frames, write_links_csv
 from .models import (
     CandidateFrame,
@@ -105,27 +106,51 @@ def analyze_video(
     meta = ingest_stage.probe(path)
     warnings = ingest_stage.validate(meta, cfg.ingest)
 
-    prop_detector = YOLOPropDetector(cfg.detection)
+    frames = list(ingest_stage.frames(path))
+    prop_detector = (
+        YOLOPropDetector(cfg.detection)
+        if cfg.detection.candidate_source in {"yolo", "hybrid"}
+        else None
+    )
+    heatmap_detector = (
+        MultiFrameHeatmapDetector(cfg.heatmap)
+        if cfg.detection.candidate_source in {"heatmap", "hybrid"}
+        else None
+    )
     accumulator = TrackAccumulator(cfg.tracking, meta.fps, keep_frames=collect_overlay)
 
     # Stage 2–3: stream frames through detection + tracking.
     raw_detections: list[object] = []
     candidate_frames: list[CandidateFrame] = []
-    for frame_idx, frame in enumerate(ingest_stage.frames(path)):
-        detections = prop_detector(frame)
+    for frame_idx, frame in enumerate(frames):
+        detections = None
+        candidates = []
+
+        if prop_detector is not None:
+            detections = prop_detector(frame)
+            candidates.extend(detections_to_candidates(detections, frame_idx, meta.fps))
+
+        if heatmap_detector is not None:
+            window = pad_window(frames, frame_idx, cfg.heatmap.window_radius)
+            candidates.extend(heatmap_detector(window, frame_idx, meta.fps))
+
         candidates = fuse_candidates(
-            filter_candidates(
-                detections_to_candidates(detections, frame_idx, meta.fps),
-                cfg.candidates,
-            ),
+            filter_candidates(candidates, cfg.candidates),
             cfg.candidates.fusion_distance_px,
         )
         candidate_frames.append(make_candidate_frame(frame_idx, meta.fps, candidates))
 
-        if collect_overlay:
+        if collect_overlay and detections is not None:
             raw_detections.append(detections)
 
         if cfg.linking.backend == "bytetrack":
+            if detections is None:
+                msg = (
+                    "ByteTrack requires YOLO box detections. Use "
+                    "--tracking centre or --tracking ballistic with "
+                    "--candidate-source heatmap."
+                )
+                raise ValueError(msg)
             accumulator.update(detections)
 
     link_rows: list[Any] = []
