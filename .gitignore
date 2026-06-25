@@ -19,6 +19,10 @@ models/*
 data/videos/*
 !data/videos/.gitkeep
 
+# Ground-truth annotations are source data, not generated artefacts.
+!data/annotations/
+!data/labels/
+
 # Generated per-run analysis artefacts
 runs/*
 !runs/.gitkeep
@@ -26,3 +30,6 @@ runs/*
 repomix-output.xml
 repomix.config.json
 .repomixignore
+
+data/annotations/raw/*.xml
+data/labels/*.csv

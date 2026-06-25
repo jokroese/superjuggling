@@ -137,6 +137,38 @@ This also writes debug CSV artefacts:
 - `debug_candidates.csv`
 - `debug_links.csv` when using `--tracking centre` or `--tracking ballistic`
 
+### Ground-truth labels
+
+Use CVAT to label balls as rectangle tracks, then export as **CVAT for video
+1.1**. Store raw annotation exports under:
+
+```text
+data/annotations/raw/
+```
+
+Convert CVAT's video XML export into the project-native CSV format:
+
+```bash
+uv run superjuggling convert-cvat \
+  data/annotations/raw/juggling-short-cvat-video.xml \
+  --out data/labels/juggling-short.csv
+```
+
+The canonical label CSV is:
+
+```csv
+frame_index,ball_id,x,y,w,h,visible,held,keyframe
+```
+
+Where:
+
+- `ball_id` is the CVAT track ID.
+- `x,y` are the rectangle centre.
+- `w,h` are the rectangle size.
+- `visible` is `0` when CVAT marks the box as outside.
+- `held` is parsed from the mutable CVAT attribute named `held`.
+- `keyframe` preserves CVAT keyframe markers for debugging interpolation.
+
 ---
 
 ## Quickstart

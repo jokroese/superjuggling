@@ -12,6 +12,7 @@ from pathlib import Path
 
 from ._optional import MissingCVDependency
 from .config import Config
+from .labels import convert_cvat_video_to_csv, read_cvat_video_labels
 from .pipeline import run
 
 
@@ -141,7 +142,65 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Minimum normalised heatmap score for peak candidates.",
     )
+
+    convert = sub.add_parser(
+        "convert-cvat",
+        help="Convert a CVAT for video export into project-native label CSV.",
+    )
+    convert.add_argument(
+        "cvat_export",
+        type=Path,
+        help="Path to CVAT for video XML or ZIP export.",
+    )
+    convert.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help="Output CSV path, e.g. data/labels/juggling-short.csv.",
+    )
+    convert.add_argument(
+        "--label",
+        default="ball",
+        help="CVAT label name to convert (default: ball).",
+    )
+    convert.add_argument(
+        "--held-attribute",
+        default="held",
+        help="CVAT mutable attribute name for held/in-hand state (default: held).",
+    )
     return parser
+
+
+def cmd_convert_cvat(args: argparse.Namespace) -> int:
+    try:
+        labels = read_cvat_video_labels(
+            args.cvat_export,
+            label_name=args.label,
+            held_attribute=args.held_attribute,
+        )
+        convert_cvat_video_to_csv(
+            args.cvat_export,
+            args.out,
+            label_name=args.label,
+            held_attribute=args.held_attribute,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    visible = sum(1 for label in labels if label.visible)
+    held = sum(1 for label in labels if label.held is True)
+    unknown_held = sum(1 for label in labels if label.held is None)
+    tracks = sorted({label.ball_id for label in labels})
+
+    print(f"Converted {len(labels)} labels from {args.cvat_export}")
+    print(f"Tracks: {len(tracks)} ({', '.join(str(track) for track in tracks)})")
+    print(f"Visible labels: {visible}")
+    print(f"Held labels: {held}")
+    if unknown_held:
+        print(f"Unknown held labels: {unknown_held}")
+    print(f"Wrote {args.out}")
+    return 0
 
 
 def cmd_analyze(args: argparse.Namespace) -> int:
@@ -234,5 +293,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "analyze":
         return cmd_analyze(args)
+    if args.command == "convert-cvat":
+        return cmd_convert_cvat(args)
     parser.print_help()
     return 1
