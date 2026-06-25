@@ -158,3 +158,29 @@ def test_cmd_analyze_rejects_invalid_yolo_confidence(capsys: Any) -> None:
     captured = capsys.readouterr()
     assert status == 1
     assert "--yolo-confidence must be between 0 and 1" in captured.err
+
+
+def test_benchmark_candidates_parser_accepts_matrix_args() -> None:
+    parser = _build_parser()
+
+    args = parser.parse_args(
+        [
+            "benchmark-candidates",
+            "clip",
+            "--labels",
+            "data/labels/clip-0000-0071.csv",
+            "--out",
+            "runs/bench",
+            "--methods",
+            "yolo,heatmap",
+            "--yolo-confidences",
+            "0.2,0.1",
+            "--radius-px",
+            "12",
+        ]
+    )
+
+    assert args.command == "benchmark-candidates"
+    assert args.methods == "yolo,heatmap"
+    assert args.yolo_confidences == "0.2,0.1"
+    assert args.radius_px == 12

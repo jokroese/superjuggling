@@ -11,6 +11,12 @@ import sys
 from pathlib import Path
 
 from ._optional import MissingCVDependency
+from .benchmark import (
+    build_candidate_benchmark_specs,
+    parse_float_list,
+    parse_methods,
+    run_candidate_benchmark,
+)
 from .config import Config
 from .evaluation import (
     evaluate_candidate_csv,
@@ -222,6 +228,62 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional path for machine-readable candidate_evaluation.json.",
     )
+
+    benchmark = sub.add_parser(
+        "benchmark-candidates",
+        help="Run and evaluate multiple candidate-generation variants.",
+    )
+    benchmark.add_argument(
+        "video",
+        help=(
+            "Input video path, or a filename/stem in data/videos/ "
+            "(e.g. jobi-juggling2-0000-0071)."
+        ),
+    )
+    benchmark.add_argument(
+        "--labels",
+        type=Path,
+        required=True,
+        help="Project-native ground-truth labels CSV.",
+    )
+    benchmark.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help="Benchmark output directory.",
+    )
+    benchmark.add_argument(
+        "--methods",
+        default="yolo,heatmap,hybrid",
+        help="Comma-separated candidate methods: yolo,heatmap,hybrid.",
+    )
+    benchmark.add_argument(
+        "--yolo-confidences",
+        default="0.20,0.15,0.10,0.07,0.05",
+        help="Comma-separated YOLO confidence sweep values.",
+    )
+    benchmark.add_argument(
+        "--tracking",
+        choices=["bytetrack", "centre", "ballistic"],
+        default="ballistic",
+        help="Tracking/linking backend for benchmark runs.",
+    )
+    benchmark.add_argument(
+        "--radius-px",
+        type=float,
+        default=15.0,
+        help="Maximum centre distance for candidate evaluation.",
+    )
+    benchmark.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow writing into existing non-empty benchmark directories.",
+    )
+    benchmark.add_argument(
+        "--require-model",
+        action="store_true",
+        help="Disable COCO fallback and require fine-tuned prop weights.",
+    )
     return parser
 
 
@@ -313,6 +375,57 @@ def cmd_evaluate_candidates(args: argparse.Namespace) -> int:
             print(f"  {source}: {count}")
     if args.out is not None:
         print(f"Wrote {args.out}")
+    return 0
+
+
+def cmd_benchmark_candidates(args: argparse.Namespace) -> int:
+    try:
+        methods = parse_methods(args.methods)
+        yolo_confidences = parse_float_list(args.yolo_confidences)
+        specs = build_candidate_benchmark_specs(
+            methods=methods,
+            yolo_confidences=yolo_confidences,
+            tracking=args.tracking,
+        )
+        rows = run_candidate_benchmark(
+            video_path=_resolve_video_path(args.video),
+            labels_path=args.labels,
+            out_dir=args.out,
+            specs=specs,
+            radius_px=args.radius_px,
+            overwrite=args.overwrite,
+            require_model=args.require_model,
+        )
+    except MissingCVDependency as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except (FileExistsError, FileNotFoundError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Benchmark written to {args.out}/")
+    print("")
+    print("Variant                 Cand  Match  Recall  Prec    F1")
+    print("----------------------  ----  -----  ------  ------  ------")
+    for row in sorted(rows, key=lambda item: item.f1, reverse=True):
+        print(
+            f"{row.name:<22}  "
+            f"{row.predicted_candidates:>4}  "
+            f"{row.matches:>5}  "
+            f"{row.recall:>6.3f}  "
+            f"{row.precision:>6.3f}  "
+            f"{row.f1:>6.3f}"
+        )
+
+    if rows:
+        best_recall = max(rows, key=lambda item: item.recall)
+        best_f1 = max(rows, key=lambda item: item.f1)
+        print("")
+        print(f"Best recall: {best_recall.name} ({best_recall.recall:.3f})")
+        print(f"Best F1: {best_f1.name} ({best_f1.f1:.3f})")
+    print("")
+    print(f"Summary CSV: {args.out / 'benchmark_summary.csv'}")
+    print(f"Summary Markdown: {args.out / 'benchmark_summary.md'}")
     return 0
 
 
@@ -416,5 +529,7 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_convert_cvat(args)
     if args.command == "evaluate-candidates":
         return cmd_evaluate_candidates(args)
+    if args.command == "benchmark-candidates":
+        return cmd_benchmark_candidates(args)
     parser.print_help()
     return 1

@@ -142,7 +142,19 @@ uv run superjuggling analyze run1 --candidate-source yolo --tracking ballistic -
 uv run superjuggling analyze run1 --candidate-source yolo --tracking ballistic --yolo-confidence 0.05 --debug-overlays --out runs/eval-yolo-conf-005 --overwrite
 ```
 
-Compare the resulting `debug_candidates.csv` files with `evaluate-candidates`.
+Or run the full comparison matrix in one command:
+
+```bash
+uv run superjuggling benchmark-candidates jobi-juggling2-0000-0071 \
+  --labels data/labels/jobi-juggling2-0000-0071.csv \
+  --out runs/bench-jobi-0000-0071 \
+  --methods yolo,heatmap,hybrid \
+  --yolo-confidences 0.20,0.15,0.10,0.07,0.05 \
+  --radius-px 15 \
+  --overwrite
+```
+
+This writes one subdirectory per variant plus `benchmark_summary.csv` and `benchmark_summary.md`.
 
 ### Diagnostic overlays
 

@@ -30,6 +30,3 @@ runs/*
 repomix-output.xml
 repomix.config.json
 .repomixignore
-
-data/annotations/raw/*.xml
-data/labels/*.csv
