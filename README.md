@@ -90,6 +90,30 @@ tracking quality. For report-only runs:
 uv run superjuggling analyze run1 --no-annotate
 ```
 
+### Tracking and candidate backends
+
+The default path is conservative:
+
+```bash
+uv run superjuggling analyze run1
+```
+
+which currently means:
+
+```text
+YOLO boxes → centre candidates → ByteTrack → trajectories → flight segments → events
+```
+
+Experimental centre-point linkers are available:
+
+```bash
+uv run superjuggling analyze run1 --tracking centre
+uv run superjuggling analyze run1 --tracking physics
+```
+
+`--detect-mode sliced` and `--detect-mode temporal` are reserved backend seams
+for future high-recall/temporal detectors.
+
 ### Diagnostic overlays
 
 To debug detection/tracking failures, render the annotated video with raw
@@ -99,6 +123,12 @@ drop flashes, and per-frame debug counts:
 ```bash
 uv run superjuggling analyze run1 --debug-overlays
 ```
+
+This also writes debug CSV artefacts:
+
+- `debug_candidates.csv`
+- `debug_links.csv` when using `--tracking centre` or `--tracking physics`
+- `debug_segments.csv`
 
 ---
 

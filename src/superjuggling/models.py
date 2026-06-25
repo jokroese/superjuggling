@@ -38,6 +38,56 @@ class VideoMeta:
         return self.total_frames / self.fps if self.fps else 0.0
 
 
+@dataclass(frozen=True)
+class BallCandidate:
+    """A centre-point candidate for a juggling prop in one frame.
+
+    Boxes are detector artefacts; downstream linking and event extraction care
+    about prop centres. This is the stable boundary between detection and
+    tracking/linking.
+    """
+
+    frame_index: int
+    t: float
+    x: float
+    y: float
+    score: float
+    radius_px: float | None = None
+    source: str = "detector"
+    class_id: int | None = None
+
+
+@dataclass(frozen=True)
+class CandidateFrame:
+    """All centre candidates for a single video frame."""
+
+    frame_index: int
+    t: float
+    candidates: list[BallCandidate] = field(default_factory=list)
+
+
+@dataclass
+class FlightSegment:
+    """A short fitted prop flight segment.
+
+    Coefficients are expressed in centred time ``u = t - t_ref``:
+
+    - x(u) = coeff_x[0] * u + coeff_x[1]
+    - y(u) = coeff_y[0] * u² + coeff_y[1] * u + coeff_y[2]
+    """
+
+    segment_id: int
+    track_id: int | None
+    t: NDArray[np.float64]
+    x: NDArray[np.float64]
+    y: NDArray[np.float64]
+    confidence: NDArray[np.float64] | None = None
+    t_ref: float = 0.0
+    coeff_x: tuple[float, float] | None = None
+    coeff_y: tuple[float, float, float] | None = None
+    rms_error_px: float | None = None
+
+
 @dataclass
 class Trajectory:
     """A single tracked prop's centre position over time.

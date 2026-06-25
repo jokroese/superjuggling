@@ -18,11 +18,28 @@ import numpy as np
 from . import events as events_stage
 from . import ingest as ingest_stage
 from . import report as report_stage
+from .candidates import (
+    detections_to_candidates,
+    filter_candidates,
+    fuse_candidates,
+    make_candidate_frame,
+    write_candidates_csv,
+)
 from .config import Config
 from .detection import YOLOPoseEstimator, YOLOPropDetector
+from .linking import link_candidate_frames, write_links_csv
 from .metrics import MetricsReport, compute_metrics
-from .models import Hand, HandTrack, Timelines, Trajectory, VideoMeta
+from .models import (
+    CandidateFrame,
+    FlightSegment,
+    Hand,
+    HandTrack,
+    Timelines,
+    Trajectory,
+    VideoMeta,
+)
 from .runs import prepare_run_dir, write_run_sidecars
+from .segments import segment_trajectories_into_flights, write_segments_csv
 from .tracking import TrackAccumulator
 
 
@@ -43,6 +60,12 @@ class AnalysisResult:
     frame_raw_detections: list[Any] = field(default_factory=list)
     # Output directory for this analysis run.
     out_dir: Path = Path()
+    # Centre-candidate architecture artefacts.
+    candidate_frames: list[CandidateFrame] = field(default_factory=list)
+    flight_segments: list[FlightSegment] = field(default_factory=list)
+    # Linker debug rows are intentionally typed Any here to keep AnalysisResult
+    # independent from linker internals in the public surface.
+    link_debug_rows: list[Any] = field(default_factory=list)
 
 
 def estimate_prop_count(trajectories: list[Trajectory], meta: VideoMeta) -> int:
@@ -68,6 +91,7 @@ def analyze_trajectories(
     trajectories: list[Trajectory],
     hands: dict[Hand, HandTrack] | None,
     cfg: Config | None = None,
+    segments: list[FlightSegment] | None = None,
 ) -> AnalysisResult:
     """Run the pure analytical half of the pipeline (stages 4–5).
 
@@ -75,7 +99,9 @@ def analyze_trajectories(
     no video required.
     """
     cfg = cfg or Config()
-    timelines = events_stage.extract_events(trajectories, hands, meta, cfg.events)
+    timelines = events_stage.extract_events(
+        trajectories, hands, meta, cfg.events, segments
+    )
     metrics = compute_metrics(timelines, meta.duration_s, cfg.weights)
     count = estimate_prop_count(trajectories, meta)
     return AnalysisResult(
@@ -85,6 +111,7 @@ def analyze_trajectories(
         metrics=metrics,
         count_estimate=count,
         warnings=[],
+        flight_segments=segments or [],
     )
 
 
@@ -103,6 +130,10 @@ def analyze_video(
     meta = ingest_stage.probe(path)
     warnings = ingest_stage.validate(meta, cfg.ingest)
 
+    if cfg.detection.mode in {"sliced", "temporal"}:
+        msg = f"detection mode {cfg.detection.mode!r} is not implemented yet"
+        raise NotImplementedError(msg)
+
     prop_detector = YOLOPropDetector(cfg.detection)
     pose_estimator = YOLOPoseEstimator(cfg.detection)
     accumulator = TrackAccumulator(cfg.tracking, meta.fps, keep_frames=collect_overlay)
@@ -110,18 +141,39 @@ def analyze_video(
     # Stage 2–3: stream frames through detection + tracking.
     keypoints: list[object] = []
     raw_detections: list[object] = []
-    for frame in ingest_stage.frames(path):
+    candidate_frames: list[CandidateFrame] = []
+    for frame_idx, frame in enumerate(ingest_stage.frames(path)):
         detections = prop_detector(frame)
+        candidates = fuse_candidates(
+            filter_candidates(
+                detections_to_candidates(detections, frame_idx, meta.fps),
+                cfg.candidates,
+            ),
+            cfg.candidates.fusion_distance_px,
+        )
+        candidate_frames.append(make_candidate_frame(frame_idx, meta.fps, candidates))
+
         if collect_overlay:
             raw_detections.append(detections)
-        accumulator.update(detections)
+
+        if cfg.linking.backend == "bytetrack":
+            accumulator.update(detections)
+
         kp = pose_estimator(frame)  # wrist keypoints; aggregation into hands is TODO
         if collect_overlay:
             keypoints.append(kp)
 
-    trajectories = accumulator.trajectories()
-    result = analyze_trajectories(meta, trajectories, None, cfg)
+    link_rows: list[Any] = []
+    if cfg.linking.backend == "bytetrack":
+        trajectories = accumulator.trajectories()
+    else:
+        trajectories, link_rows = link_candidate_frames(candidate_frames, cfg.linking)
+
+    segments = segment_trajectories_into_flights(trajectories, cfg.segments)
+    result = analyze_trajectories(meta, trajectories, None, cfg, segments=segments)
     result.warnings = warnings
+    result.candidate_frames = candidate_frames
+    result.link_debug_rows = link_rows
     if collect_overlay:
         result.frame_detections = accumulator.frame_detections()
         result.frame_keypoints = keypoints
@@ -169,6 +221,12 @@ def run(
         annotate_stage.annotate_video(
             result, annotated_path, cfg, debug_overlays=debug_overlays
         )
+
+    if debug_overlays:
+        write_candidates_csv(result.candidate_frames, run_dir / "debug_candidates.csv")
+        write_segments_csv(result.flight_segments, run_dir / "debug_segments.csv")
+        if result.link_debug_rows:
+            write_links_csv(result.link_debug_rows, run_dir / "debug_links.csv")
 
     write_run_sidecars(
         run_dir=run_dir,

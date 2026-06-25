@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from superjuggling.config import EventConfig
-from superjuggling.events import _fit_apex_window, extract_throws
+from superjuggling.config import EventConfig, SegmentConfig
+from superjuggling.events import _fit_apex_window, extract_events, extract_throws
 from superjuggling.models import Hand, Trajectory, VideoMeta
 from superjuggling.pipeline import analyze_trajectories, estimate_prop_count
+from superjuggling.segments import segment_trajectories_into_flights
 
 
 def _parabolic_arc(
@@ -152,3 +153,17 @@ def test_windowed_apex_fit_rejects_noisy_bad_fit() -> None:
     fitted = _fit_apex_window(traj, int(np.argmin(y)), cfg)
 
     assert fitted is None
+
+
+def test_extract_events_prefers_flight_segments_when_available() -> None:
+    fps = 60.0
+    meta = VideoMeta("x.mp4", fps=fps, total_frames=60, width=1280, height=720)
+    t, y = _parabolic_arc(0.0, 1.0, apex_y=200.0, base_y=600.0, fps=fps)
+    x = 700.0 + 20.0 * (t - 0.5)
+    traj = Trajectory(track_id=1, t=t, x=x, y=y)
+    segments = segment_trajectories_into_flights([traj], cfg=SegmentConfig())
+
+    timelines = extract_events([traj], None, meta, EventConfig(), segments=segments)
+
+    assert len(timelines.throws) == 1
+    assert abs(timelines.throws[0].t - 0.5) < 0.02

@@ -16,7 +16,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ._optional import require
+from .candidates import detections_to_candidates
 from .config import DetectionConfig
+from .models import BallCandidate
 
 
 @runtime_checkable
@@ -74,6 +76,31 @@ class YOLOPropDetector:
         if self._ball_class_id is not None:
             detections = detections[detections.class_id == self._ball_class_id]
         return detections
+
+
+class YOLOCandidateDetector:
+    """YOLO boxes converted to centre-point candidates."""
+
+    def __init__(self, cfg: DetectionConfig) -> None:
+        if cfg.mode not in {"yolo", "hybrid"}:
+            msg = (
+                f"detection mode {cfg.mode!r} is not implemented as a YOLO "
+                "candidate detector. Use mode='yolo' for now."
+            )
+            raise NotImplementedError(msg)
+        self._detector = YOLOPropDetector(cfg)
+
+    def __call__(
+        self,
+        frame: NDArray[np.uint8],
+        frame_index: int,
+        fps: float,
+    ) -> list[BallCandidate]:
+        detections = self._detector(frame)
+        return detections_to_candidates(detections, frame_index, fps)
+
+    def detect_boxes(self, frame: NDArray[np.uint8]) -> Any:
+        return self._detector(frame)
 
 
 class YOLOPoseEstimator:

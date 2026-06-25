@@ -7,6 +7,7 @@ here so it can be tweaked per clip / prop-count tier without touching logic.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 
 @dataclass
@@ -28,12 +29,46 @@ class DetectionConfig:
     # Props are small and motion-blurred at the apex, so the threshold is low
     # and we lean on tracking + smoothing to suppress spurious detections.
     confidence: float = 0.2
+    # Candidate source mode. ``temporal`` and ``sliced`` are architecture seams;
+    # ``yolo`` remains the implemented default candidate source.
+    mode: Literal["yolo", "sliced", "temporal", "hybrid"] = "yolo"
     # Smoke-test escape hatch (tech spec §4.2): when no fine-tuned weights exist,
     # fall back to COCO ``yolov8n.pt`` filtered to the "sports ball" class. The
     # spec warns these detections are unreliable for fast props — plumbing only.
     allow_coco: bool = False
     coco_model_path: str = "yolov8n.pt"
     coco_ball_class_id: int = 32  # COCO "sports ball"
+
+
+@dataclass
+class CandidateConfig:
+    """Centre-candidate filtering/fusion settings."""
+
+    min_score: float = 0.05
+    fusion_distance_px: float = 20.0
+    roi: tuple[float, float, float, float] | None = None  # x1, y1, x2, y2
+
+
+@dataclass
+class LinkingConfig:
+    """Candidate linking backend and association thresholds."""
+
+    backend: Literal["bytetrack", "centre", "physics"] = "bytetrack"
+    max_match_distance_px: float = 80.0
+    max_gap_s: float = 0.18
+    min_track_points: int = 3
+    confidence_bonus_px: float = 12.0
+    physics_residual_weight: float = 0.35
+
+
+@dataclass
+class SegmentConfig:
+    """Flight-segment fitting settings."""
+
+    enabled: bool = True
+    min_points: int = 5
+    max_gap_s: float = 0.20
+    max_rms_px: float = 35.0
 
 
 @dataclass
@@ -89,6 +124,9 @@ class ScoreWeights:
 class Config:
     ingest: IngestConfig = field(default_factory=IngestConfig)
     detection: DetectionConfig = field(default_factory=DetectionConfig)
+    candidates: CandidateConfig = field(default_factory=CandidateConfig)
+    linking: LinkingConfig = field(default_factory=LinkingConfig)
+    segments: SegmentConfig = field(default_factory=SegmentConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     events: EventConfig = field(default_factory=EventConfig)
     weights: ScoreWeights = field(default_factory=ScoreWeights)

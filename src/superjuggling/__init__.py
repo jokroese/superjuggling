@@ -8,8 +8,11 @@ optional ``cv`` extra (``uv sync --extra cv``).
 from .config import Config
 from .metrics import MetricsReport, compute_metrics
 from .models import (
+    BallCandidate,
     CatchEvent,
+    CandidateFrame,
     DropEvent,
+    FlightSegment,
     Hand,
     HandTrack,
     ThrowEvent,
@@ -19,9 +22,12 @@ from .models import (
 )
 
 __all__ = [
+    "BallCandidate",
     "CatchEvent",
+    "CandidateFrame",
     "Config",
     "DropEvent",
+    "FlightSegment",
     "Hand",
     "HandTrack",
     "MetricsReport",

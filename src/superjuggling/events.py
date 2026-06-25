@@ -16,6 +16,7 @@ from scipy.signal import find_peaks
 
 from .config import EventConfig
 from .models import (
+    FlightSegment,
     CatchEvent,
     DropEvent,
     Hand,
@@ -25,6 +26,7 @@ from .models import (
     Trajectory,
     VideoMeta,
 )
+from .segments import segment_apex
 
 
 def _parabolic_vertex(
@@ -289,19 +291,61 @@ def detect_drops(
     return drops
 
 
+def extract_throws_from_segments(
+    segments: list[FlightSegment],
+    cfg: EventConfig,
+    hand_line_y: float,
+    hands: dict[Hand, HandTrack] | None,
+) -> list[ThrowEvent]:
+    """Extract throw events from fitted flight segments."""
+    throws: list[ThrowEvent] = []
+    for segment in segments:
+        apex = segment_apex(segment)
+        if apex is None:
+            continue
+        t_apex, x_apex, y_apex = apex
+        if len(segment.t) < 2:
+            continue
+        duration = float(np.max(segment.t) - np.min(segment.t))
+        if duration < cfg.min_inter_throw_s:
+            continue
+        throws.append(
+            ThrowEvent(
+                t=t_apex,
+                track_id=segment.track_id
+                if segment.track_id is not None
+                else segment.segment_id,
+                hand=_assign_hand(x_apex, t_apex, hands),
+                apex_x=x_apex,
+                apex_y=y_apex,
+                height_px=hand_line_y - y_apex,
+            )
+        )
+    throws.sort(key=lambda event: event.t)
+    return throws
+
+
 def extract_events(
     trajectories: list[Trajectory],
     hands: dict[Hand, HandTrack] | None,
     meta: VideoMeta,
     cfg: EventConfig,
+    segments: list[FlightSegment] | None = None,
 ) -> Timelines:
     """Run the full event-extraction stage over all trajectories."""
     default_hand_line = meta.height * 0.8
     hand_line_y = _hand_line(hands, default_hand_line)
 
     timelines = Timelines()
+    if segments:
+        timelines.throws.extend(
+            extract_throws_from_segments(segments, cfg, hand_line_y, hands)
+        )
+    else:
+        for traj in trajectories:
+            timelines.throws.extend(extract_throws(traj, cfg, hand_line_y, hands))
+
     for traj in trajectories:
-        timelines.throws.extend(extract_throws(traj, cfg, hand_line_y, hands))
         timelines.catches.extend(extract_catches(traj, cfg, hand_line_y, hands))
     timelines.drops.extend(detect_drops(trajectories, cfg, meta))
 

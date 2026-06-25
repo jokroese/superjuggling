@@ -239,6 +239,28 @@ def _draw_debug_hud(
         )
 
 
+def _draw_candidate_points(
+    frame: Any,
+    cv2: Any,
+    candidates: list[Any],
+) -> None:
+    """Draw centre candidates, independent of any tracking backend."""
+    for cand in candidates:
+        radius = int(max(4.0, cand.radius_px or 4.0))
+        cv2.circle(frame, (int(cand.x), int(cand.y)), radius, _BLUE, 1, cv2.LINE_AA)
+        cv2.circle(frame, (int(cand.x), int(cand.y)), 2, _BLUE, -1, cv2.LINE_AA)
+        cv2.putText(
+            frame,
+            f"{cand.source}:{cand.score:.2f}",
+            (int(cand.x) + 6, int(cand.y) + 14),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.35,
+            _BLUE,
+            1,
+            cv2.LINE_AA,
+        )
+
+
 def annotate_video(
     result: AnalysisResult,
     out_path: Path,
@@ -259,7 +281,12 @@ def annotate_video(
     frame_kps = result.frame_keypoints
     fps = meta.fps or 30.0
 
-    if not frame_dets:
+    if not (
+        frame_dets
+        or result.candidate_frames
+        or result.trajectories
+        or result.frame_raw_detections
+    ):
         msg = (
             "No per-frame detections to annotate. Run the pipeline with "
             "annotate=True / collect_overlay=True first."
@@ -290,10 +317,11 @@ def annotate_video(
             t = i / fps
             dets = frame_dets[i] if i < len(frame_dets) else empty
 
-            frame = trace.annotate(frame, dets)
-            frame = box.annotate(frame, dets)
-            if len(dets):
-                frame = label.annotate(frame, dets, labels=_labels_for(dets))
+            if frame_dets:
+                frame = trace.annotate(frame, dets)
+                frame = box.annotate(frame, dets)
+                if len(dets):
+                    frame = label.annotate(frame, dets, labels=_labels_for(dets))
 
             raw_count = 0
             low_count = 0
@@ -310,6 +338,10 @@ def annotate_video(
                 sample_count = _draw_recent_trajectory_samples(
                     frame, cv2, result, t, window_s=1.0
                 )
+                if i < len(result.candidate_frames):
+                    _draw_candidate_points(
+                        frame, cv2, result.candidate_frames[i].candidates
+                    )
 
             if frame_kps and i < len(frame_kps) and frame_kps[i] is not None:
                 try:
