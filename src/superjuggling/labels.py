@@ -147,6 +147,32 @@ def read_cvat_video_labels(
     return sorted(labels, key=lambda row: (row.frame_index, row.ball_id))
 
 
+def filter_labels_by_frame_range(
+    labels: list[GroundTruthLabel],
+    *,
+    frame_start: int | None = None,
+    frame_end: int | None = None,
+) -> list[GroundTruthLabel]:
+    """Keep only labels inside an inclusive trusted frame range.
+
+    This is useful when a CVAT task spans a whole video but only a subset of
+    frames were actually reviewed by a human. For example, a first benchmark may
+    intentionally use only frames 0..71 from a 1006-frame clip.
+    """
+    if frame_start is not None and frame_start < 0:
+        msg = "frame_start must be >= 0"
+        raise ValueError(msg)
+    if frame_end is not None and frame_start is not None and frame_end < frame_start:
+        msg = "frame_end must be >= frame_start"
+        raise ValueError(msg)
+    return [
+        label
+        for label in labels
+        if (frame_start is None or label.frame_index >= frame_start)
+        and (frame_end is None or label.frame_index <= frame_end)
+    ]
+
+
 def write_ground_truth_csv(
     labels: list[GroundTruthLabel],
     out_path: Path,
@@ -216,6 +242,8 @@ def convert_cvat_video_to_csv(
     *,
     label_name: str = "ball",
     held_attribute: str = "held",
+    frame_start: int | None = None,
+    frame_end: int | None = None,
 ) -> Path:
     """Convert a CVAT for video XML/ZIP export into project-native CSV."""
     labels = read_cvat_video_labels(
@@ -223,7 +251,15 @@ def convert_cvat_video_to_csv(
         label_name=label_name,
         held_attribute=held_attribute,
     )
+    labels = filter_labels_by_frame_range(
+        labels,
+        frame_start=frame_start,
+        frame_end=frame_end,
+    )
     if not labels:
-        msg = f"no {label_name!r} track boxes found in CVAT export: {cvat_path}"
+        suffix = ""
+        if frame_start is not None or frame_end is not None:
+            suffix = f" in frame range {frame_start}..{frame_end}"
+        msg = f"no {label_name!r} track boxes found in CVAT export{suffix}: {cvat_path}"
         raise ValueError(msg)
     return write_ground_truth_csv(labels, out_path)

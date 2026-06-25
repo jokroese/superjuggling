@@ -151,7 +151,9 @@ Convert CVAT's video XML export into the project-native CSV format:
 ```bash
 uv run superjuggling convert-cvat \
   data/annotations/raw/juggling-short-cvat-video.xml \
-  --out data/labels/juggling-short.csv
+  --out data/labels/juggling-short-0000-0071.csv \
+  --frame-start 0 \
+  --frame-end 71
 ```
 
 The canonical label CSV is:
@@ -168,6 +170,18 @@ Where:
 - `visible` is `0` when CVAT marks the box as outside.
 - `held` is parsed from the mutable CVAT attribute named `held`.
 - `keyframe` preserves CVAT keyframe markers for debugging interpolation.
+
+When only part of a video has been reviewed, always export a trusted slice.
+For example, if a 1006-frame clip has only frames 0..71 reviewed, keep that
+as a separate label file:
+
+```text
+data/labels/juggling-short-0000-0071.csv
+```
+
+Evaluation should only score frames present in the label CSV. Predictions after
+frame 71 are ignored for this benchmark; they are neither rewarded nor
+penalized.
 
 ---
 

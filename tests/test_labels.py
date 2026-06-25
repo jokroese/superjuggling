@@ -5,6 +5,7 @@ from pathlib import Path
 
 from superjuggling.labels import (
     convert_cvat_video_to_csv,
+    filter_labels_by_frame_range,
     read_cvat_video_labels,
     read_ground_truth_csv,
     write_ground_truth_csv,
@@ -124,3 +125,36 @@ def test_ground_truth_csv_round_trip(tmp_path: Path) -> None:
     loaded = read_ground_truth_csv(csv_path)
 
     assert loaded == labels
+
+
+def test_filter_labels_by_frame_range_is_inclusive(tmp_path: Path) -> None:
+    cvat_xml = _write_cvat_xml(tmp_path)
+    labels = read_cvat_video_labels(cvat_xml)
+
+    filtered = filter_labels_by_frame_range(
+        labels,
+        frame_start=0,
+        frame_end=0,
+    )
+
+    assert len(filtered) == 2
+    assert {label.frame_index for label in filtered} == {0}
+
+
+def test_convert_cvat_video_to_csv_can_write_trusted_slice(tmp_path: Path) -> None:
+    cvat_xml = _write_cvat_xml(tmp_path)
+    out = tmp_path / "labels-first-frame.csv"
+
+    convert_cvat_video_to_csv(
+        cvat_xml,
+        out,
+        frame_start=0,
+        frame_end=0,
+    )
+
+    with out.open(newline="") as fh:
+        rows = list(csv.DictReader(fh))
+
+    assert len(rows) == 2
+    assert {row["frame_index"] for row in rows} == {"0"}
+    assert {row["ball_id"] for row in rows} == {"0", "1"}

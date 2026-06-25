@@ -12,7 +12,11 @@ from pathlib import Path
 
 from ._optional import MissingCVDependency
 from .config import Config
-from .labels import convert_cvat_video_to_csv, read_cvat_video_labels
+from .labels import (
+    convert_cvat_video_to_csv,
+    filter_labels_by_frame_range,
+    read_cvat_video_labels,
+)
 from .pipeline import run
 
 
@@ -168,6 +172,18 @@ def _build_parser() -> argparse.ArgumentParser:
         default="held",
         help="CVAT mutable attribute name for held/in-hand state (default: held).",
     )
+    convert.add_argument(
+        "--frame-start",
+        type=int,
+        default=None,
+        help="First trusted frame to include, inclusive.",
+    )
+    convert.add_argument(
+        "--frame-end",
+        type=int,
+        default=None,
+        help="Last trusted frame to include, inclusive. For your first slice use 71.",
+    )
     return parser
 
 
@@ -178,11 +194,18 @@ def cmd_convert_cvat(args: argparse.Namespace) -> int:
             label_name=args.label,
             held_attribute=args.held_attribute,
         )
+        labels = filter_labels_by_frame_range(
+            labels,
+            frame_start=args.frame_start,
+            frame_end=args.frame_end,
+        )
         convert_cvat_video_to_csv(
             args.cvat_export,
             args.out,
             label_name=args.label,
             held_attribute=args.held_attribute,
+            frame_start=args.frame_start,
+            frame_end=args.frame_end,
         )
     except (FileNotFoundError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -192,9 +215,12 @@ def cmd_convert_cvat(args: argparse.Namespace) -> int:
     held = sum(1 for label in labels if label.held is True)
     unknown_held = sum(1 for label in labels if label.held is None)
     tracks = sorted({label.ball_id for label in labels})
+    frames = sorted({label.frame_index for label in labels})
 
     print(f"Converted {len(labels)} labels from {args.cvat_export}")
     print(f"Tracks: {len(tracks)} ({', '.join(str(track) for track in tracks)})")
+    if frames:
+        print(f"Frames: {frames[0]}..{frames[-1]} ({len(frames)} labelled frames)")
     print(f"Visible labels: {visible}")
     print(f"Held labels: {held}")
     if unknown_held:
