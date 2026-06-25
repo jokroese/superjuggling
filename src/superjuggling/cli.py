@@ -37,6 +37,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Also render an annotated output video.",
     )
     analyze.add_argument(
+        "--debug-overlays",
+        action="store_true",
+        help="Render diagnostic overlays in the annotated video. Implies "
+        "--annotate.",
+    )
+    analyze.add_argument(
         "--allow-coco",
         action="store_true",
         help="Smoke test only: use COCO 'sports ball' weights when no "
@@ -48,11 +54,21 @@ def _build_parser() -> argparse.ArgumentParser:
 def cmd_analyze(args: argparse.Namespace) -> int:
     cfg = Config()
     cfg.detection.allow_coco = args.allow_coco
+    annotate = bool(args.annotate or args.debug_overlays)
     try:
-        result = run(args.video, args.out, cfg, annotate=args.annotate)
+        result = run(args.video, args.out, cfg, annotate=annotate, debug_overlays=args.debug_overlays)
     except MissingCVDependency as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        if args.debug_overlays and not args.allow_coco:
+            print(
+                "hint: for a plumbing-only diagnostic run without fine-tuned "
+                "weights, add --allow-coco.",
+                file=sys.stderr,
+            )
+        return 1
     except FileNotFoundError:
         print(f"error: video not found: {args.video}", file=sys.stderr)
         return 1
@@ -66,8 +82,10 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     )
     print(f"Overall consistency: {result.metrics.overall_consistency:.0f}/100")
     print(f"Report written to {args.out}/")
-    if args.annotate:
+    if annotate:
         print(f"Annotated video written to {args.out / 'annotated.mp4'}")
+    if args.debug_overlays:
+        print("Diagnostic overlays enabled")
     return 0
 
 

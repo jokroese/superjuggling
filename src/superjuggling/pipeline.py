@@ -37,6 +37,9 @@ class AnalysisResult:
     # is requested (see ``analyze_video(collect_overlay=True)``).
     frame_detections: list[Any] = field(default_factory=list)
     frame_keypoints: list[Any] = field(default_factory=list)
+    # Raw detector output before ByteTrack / smoothing. Populated only when
+    # overlay data is collected; used by diagnostic annotation overlays.
+    frame_raw_detections: list[Any] = field(default_factory=list)
 
 
 def estimate_prop_count(trajectories: list[Trajectory], meta: VideoMeta) -> int:
@@ -103,8 +106,11 @@ def analyze_video(
 
     # Stage 2–3: stream frames through detection + tracking.
     keypoints: list[object] = []
+    raw_detections: list[object] = []
     for frame in ingest_stage.frames(path):
         detections = prop_detector(frame)
+        if collect_overlay:
+            raw_detections.append(detections)
         accumulator.update(detections)
         kp = pose_estimator(frame)  # wrist keypoints; aggregation into hands is TODO
         if collect_overlay:
@@ -116,6 +122,7 @@ def analyze_video(
     if collect_overlay:
         result.frame_detections = accumulator.frame_detections()
         result.frame_keypoints = keypoints
+        result.frame_raw_detections = raw_detections
     return result
 
 
@@ -124,10 +131,12 @@ def run(
     out_dir: Path,
     cfg: Config | None = None,
     annotate: bool = False,
+    debug_overlays: bool = False,
 ) -> AnalysisResult:
     """Full analyze + write report (+ optional annotated video)."""
     cfg = cfg or Config()
-    result = analyze_video(path, cfg, collect_overlay=annotate)
+    collect_overlay = annotate or debug_overlays
+    result = analyze_video(path, cfg, collect_overlay=collect_overlay)
     report_stage.write_report(
         result.meta,
         result.timelines,
@@ -136,8 +145,10 @@ def run(
         n_tracks=len(result.trajectories),
         count_estimate=result.count_estimate,
     )
-    if annotate:
+    if collect_overlay:
         from . import annotate as annotate_stage
 
-        annotate_stage.annotate_video(result, out_dir / "annotated.mp4", cfg)
+        annotate_stage.annotate_video(
+            result, out_dir / "annotated.mp4", cfg, debug_overlays=debug_overlays
+        )
     return result

@@ -46,6 +46,16 @@ props (§4.2). For a **plumbing-only smoke test** with no custom model, add
 `--allow-coco` to fall back to COCO weights — useful to confirm the annotated
 video renders end to end, not to read real metrics off it.
 
+### Diagnostic overlays
+
+To debug detection/tracking failures, render the annotated video with raw
+pre-tracking detections, low-confidence highlights, recent trajectory samples,
+drop flashes, and per-frame debug counts:
+
+```bash
+uv run superjuggling analyze run1.mp4 --out report/ --debug-overlays
+```
+
 ---
 
 ## Quickstart
